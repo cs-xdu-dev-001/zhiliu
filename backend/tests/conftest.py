@@ -9,7 +9,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.db import Base, get_db
 from app.main import create_app
-from app.models import IntelligenceItem, Subscription, User
+from app.models import IntelligenceItem, Subscription, TaskRun, User
 
 
 @pytest.fixture
@@ -28,7 +28,7 @@ def db_session() -> Generator[Session, None, None]:
 
 @pytest.fixture
 def client(db_session: Session) -> Generator[TestClient, None, None]:
-    app = create_app()
+    app = create_app(start_background_scheduler=False)
 
     def override_db() -> Generator[Session, None, None]:
         yield db_session
@@ -94,3 +94,12 @@ def seeded_item(db_session: Session, subscription: Subscription) -> Intelligence
     db_session.commit()
     db_session.refresh(item)
     return item
+
+
+@pytest.fixture
+def running_task(db_session: Session, subscription: Subscription) -> TaskRun:
+    task = TaskRun(subscription_id=subscription.id, status="running")
+    db_session.add(task)
+    db_session.commit()
+    db_session.refresh(task)
+    return task

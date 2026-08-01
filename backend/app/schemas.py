@@ -114,3 +114,21 @@ class DashboardResponse(ApiModel):
     top_items: list[IntelligenceItemResponse]
     latest_briefing: BriefingResponse | None
 
+
+class TaskRunResponse(ApiModel):
+    id: int
+    subscription_id: int
+    hermes_run_id: str | None
+    status: str
+    started_at: datetime
+    finished_at: datetime | None
+    duration_ms: int | None
+    error_message: str | None
+
+
+class TaskRunPage(ApiModel):
+    items: list[TaskRunResponse]
+    total: int
+    limit: int
+    offset: int
+
