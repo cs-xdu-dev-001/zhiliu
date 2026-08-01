@@ -1,0 +1,11 @@
+.env
+.pytest_cache/
+.venv/
+__pycache__/
+*.py[cod]
+backend/data/*.db
+frontend/node_modules/
+frontend/dist/
+frontend/playwright-report/
+frontend/test-results/
+
