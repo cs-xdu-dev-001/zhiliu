@@ -1,0 +1,30 @@
+from fastapi.testclient import TestClient
+
+
+def test_list_items_and_mark_read(auth_client: TestClient, seeded_item) -> None:
+    listed = auth_client.get("/api/items?kind=news&state=unread")
+    updated = auth_client.patch(
+        f"/api/items/{seeded_item.id}",
+        json={"isRead": True},
+    )
+
+    assert listed.status_code == 200
+    assert listed.json()["items"][0]["title"] == "Agent框架发布新版本"
+    assert listed.json()["total"] == 1
+    assert updated.status_code == 200
+    assert updated.json()["isRead"] is True
+
+
+def test_dashboard_reports_unread_count(auth_client: TestClient, seeded_item) -> None:
+    response = auth_client.get("/api/dashboard")
+
+    assert response.status_code == 200
+    assert response.json()["unreadCount"] == 1
+    assert response.json()["topItems"][0]["importance"] == 0.92
+
+
+def test_missing_item_returns_not_found(auth_client: TestClient) -> None:
+    response = auth_client.patch("/api/items/999", json={"isSaved": True})
+
+    assert response.status_code == 404
+

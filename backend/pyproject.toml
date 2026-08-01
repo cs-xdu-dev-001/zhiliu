@@ -1,0 +1,27 @@
+[project]
+name = "zhiliu-backend"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+  "apscheduler>=3.11,<4",
+  "croniter>=6,<7",
+  "fastapi>=0.116,<0.117",
+  "httpx>=0.28,<1",
+  "pwdlib[argon2]>=0.2,<1",
+  "pydantic>=2.11,<2.12",
+  "pydantic-settings>=2.10,<2.11",
+  "pyjwt>=2.10,<3",
+  "sqlalchemy>=2.0,<3",
+  "uvicorn[standard]>=0.35,<1",
+]
+
+[dependency-groups]
+dev = [
+  "pytest>=8.4,<9",
+  "pytest-asyncio>=1.1,<2",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-q"
