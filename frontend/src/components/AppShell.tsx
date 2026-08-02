@@ -2,6 +2,7 @@ import { BookOpenText, House, ListFilter, Radio, Settings2 } from "lucide-react"
 import { Link, Route, Switch, useLocation } from "wouter";
 import { Feed } from "../pages/Feed";
 import { Home } from "../pages/Home";
+import { ItemDetail } from "../pages/ItemDetail";
 import { Reports } from "../pages/Reports";
 import { Subscriptions } from "../pages/Subscriptions";
 import { Tasks } from "../pages/Tasks";
@@ -22,6 +23,11 @@ const desktopNav = [
   { to: "/settings", label: "设置", icon: Settings2 },
 ];
 
+function pageName(location: string) {
+  if (location.startsWith("/items/")) return "情报详情";
+  return pageNames[location] ?? "今日情报";
+}
+
 export function AppShell() {
   const [location] = useLocation();
 
@@ -40,9 +46,9 @@ export function AppShell() {
       <div className="main-column">
         <header className="topbar">
           <div className="mobile-brand"><Radio size={18} /><span>知流</span></div>
-          <h1>{pageNames[location] ?? "今日情报"}</h1>
+          <h1>{pageName(location)}</h1>
         </header>
-        <main className="page-content"><Switch><Route path="/feed" component={Feed} /><Route path="/reports" component={Reports} /><Route path="/settings" component={Subscriptions} /><Route path="/tasks" component={Tasks} /><Route path="/" component={Home} /><Route component={Home} /></Switch></main>
+        <main className="page-content"><Switch><Route path="/items/:id" component={ItemDetail} /><Route path="/feed" component={Feed} /><Route path="/reports" component={Reports} /><Route path="/settings" component={Subscriptions} /><Route path="/tasks" component={Tasks} /><Route path="/" component={Home} /><Route component={Home} /></Switch></main>
       </div>
       <BottomNav />
     </div>

@@ -24,6 +24,7 @@ export function Feed() {
   const state = allowedStates.has(rawState) ? rawState : "unread";
   const itemQuery = new URLSearchParams({ state });
   if (kind) itemQuery.set("kind", kind);
+  const returnHref = `/feed${searchParams.toString() ? `?${searchParams.toString()}` : ""}`;
   const [notice, setNotice] = useState<{ tone: "success" | "error"; text: string } | null>(null);
   const queryClient = useQueryClient();
   const query = useQuery({
@@ -71,7 +72,7 @@ export function Feed() {
       {query.isError && <div className="inline-error" role="alert">情报加载失败。<button onClick={() => query.refetch()}>重新加载</button></div>}
       {query.data?.items.length === 0 && <div className="empty-state"><p>当前筛选下没有情报</p><button className="text-button" onClick={clearFilters}>清除筛选</button></div>}
       <div className="item-list">
-        {query.data?.items.map((item) => <ItemCard key={item.id} item={item} busy={update.isPending && update.variables?.id === item.id} onChange={(patch) => update.mutate({ id: item.id, patch })} />)}
+        {query.data?.items.map((item) => <ItemCard key={item.id} item={item} detailHref={`/items/${item.id}?from=${encodeURIComponent(returnHref)}`} busy={update.isPending && update.variables?.id === item.id} onChange={(patch) => update.mutate({ id: item.id, patch })} />)}
       </div>
     </section>
   );

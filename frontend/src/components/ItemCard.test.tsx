@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { expect, it } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, expect, it, vi } from "vitest";
 
 import { ItemCard } from "./ItemCard";
 
@@ -21,6 +21,8 @@ const item = {
   createdAt: "2026-08-01T00:00:00Z",
 };
 
+afterEach(cleanup);
+
 it("用优先级语义解释重要性并明确已读状态", () => {
   render(<ItemCard item={item} />);
 
@@ -32,4 +34,24 @@ it("展示微信Hermes组合来源", () => {
   render(<ItemCard item={{ ...item, source: "arXiv · 微信Hermes" }} />);
 
   expect(screen.getByText("arXiv · 微信Hermes")).toBeVisible();
+});
+
+it("标题摘要进入独立详情且列表不展开判断理由", () => {
+  render(<ItemCard item={item} detailHref="/items/1?from=%2Ffeed%3Fstate%3Dunread" />);
+
+  expect(screen.getByRole("link", { name: /Agent框架发布新版本/ })).toHaveAttribute(
+    "href",
+    "/items/1?from=%2Ffeed%3Fstate%3Dunread",
+  );
+  expect(screen.getByText("工具调用可靠性提升。")).toHaveClass("item-summary");
+  expect(screen.queryByText(/值得关注/)).not.toBeInTheDocument();
+});
+
+it("快捷操作位于详情链接之外", () => {
+  const onChange = vi.fn();
+  render(<ItemCard item={item} onChange={onChange} />);
+
+  expect(screen.getByRole("link", { name: /Agent框架发布新版本/ })).not.toContainElement(
+    screen.getByRole("button", { name: "收藏" }),
+  );
 });
