@@ -78,6 +78,22 @@ class Briefing(Base):
     subscription: Mapped[Subscription] = relationship(back_populates="briefings")
 
 
+class HermesPublication(Base):
+    __tablename__ = "hermes_publications"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    idempotency_key: Mapped[str] = mapped_column(String(160), unique=True, index=True)
+    payload_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    subscription_id: Mapped[int] = mapped_column(ForeignKey("subscriptions.id"), index=True)
+    briefing_id: Mapped[int | None] = mapped_column(ForeignKey("briefings.id"), nullable=True)
+    item_count: Mapped[int] = mapped_column(Integer, default=0)
+    skipped_count: Mapped[int] = mapped_column(Integer, default=0)
+    topic: Mapped[str] = mapped_column(String(200))
+    request_summary: Mapped[str] = mapped_column(String(1000))
+    origin: Mapped[str] = mapped_column(String(40), default="weixin-hermes")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
 class TaskRun(Base):
     __tablename__ = "task_runs"
 
