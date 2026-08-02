@@ -1,5 +1,5 @@
 export type IntelligenceKind = "news" | "paper" | "job";
-export type HermesConnectionStatus = "connected" | "disconnected" | "unauthorized" | "unconfigured" | "error";
+export type HermesConnectionStatus = "connected" | "unreachable" | "unauthorized" | "unconfigured" | "error";
 export interface HermesConnection {
   baseUrl: string;
   apiKeyConfigured: boolean;

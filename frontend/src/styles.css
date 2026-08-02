@@ -60,7 +60,7 @@ button:disabled { cursor: wait; }
 .hermes-summary { display:flex; justify-content:space-between; gap:16px; min-width:0; }
 .hermes-summary h2 { margin:0 0 6px; font-size:17px; }
 .hermes-summary p { margin:0; font-size:14px; }
-.hermes-status { font-weight:650; }.hermes-status.connected { color:var(--signal); }.hermes-status.unauthorized,.hermes-status.error { color:var(--danger); }.hermes-status.disconnected { color:var(--amber); }.hermes-status.unconfigured { color:var(--muted); }
+.hermes-status { font-weight:650; }.hermes-status.connected { color:var(--signal); }.hermes-status.unauthorized,.hermes-status.error { color:var(--danger); }.hermes-status.unreachable { color:var(--amber); }.hermes-status.unconfigured { color:var(--muted); }
 .hermes-meta { display:flex; flex-wrap:wrap; gap:8px 14px; color:var(--muted); font-size:14px; align-items:center; }
 .hermes-actions { display:flex; gap:10px; justify-content:flex-end; }.hermes-actions button { min-height:44px; }
 @media (max-width:640px) { .hermes-summary { display:grid; gap:10px; } .hermes-actions { justify-content:stretch; } .hermes-actions button { flex:1; } }
