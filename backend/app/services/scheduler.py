@@ -8,7 +8,8 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.db import SessionLocal
 from app.models import Subscription, TaskRun
-from app.services.hermes import HermesBriefing, HermesItem, HermesResult
+from app.services.hermes import HermesBriefing, HermesItem, HermesResult, HermesUnavailable
+from app.core.crypto import SecretDecryptionError
 from app.services.hermes_integration import HermesIntegrationService
 from app.services.run_service import RunService
 
@@ -86,7 +87,7 @@ async def process_queued_tasks() -> None:
                 continue
             try:
                 client = HermesIntegrationService(db, settings).resolve_client(task.subscription, DemoHermesClient)
-            except Exception as exc:
+            except (HermesUnavailable, SecretDecryptionError) as exc:
                 task.status = "failed"
                 task.error_message = str(exc)[:2000]
                 task.finished_at = datetime.now(timezone.utc)

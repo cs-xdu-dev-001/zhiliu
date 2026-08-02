@@ -6,6 +6,8 @@ from app.models import HermesIntegration
 from app.core.crypto import SecretCipher, SecretDecryptionError
 from app.services.hermes import HermesClient, HermesUnavailable
 from app.services.hermes_integration import HermesIntegrationService
+import asyncio
+from app.services import scheduler
 
 
 class Settings:
@@ -51,6 +53,18 @@ def test_resolver_corrupt_database_key_does_not_fallback(db_session, subscriptio
         pass
     else:
         raise AssertionError("expected SecretDecryptionError")
+
+
+def test_process_marks_configuration_failure(db_session, subscription, monkeypatch):
+    task = TaskRun(subscription_id=subscription.id, status="queued"); db_session.add(task); db_session.commit()
+    class Factory:
+        def __enter__(self): return db_session
+        def __exit__(self, *args): return False
+    monkeypatch.setattr(scheduler, "SessionLocal", Factory)
+    monkeypatch.setattr(scheduler.HermesIntegrationService, "resolve_client", lambda *a: (_ for _ in ()).throw(HermesUnavailable("尚未配置Hermes连接")))
+    asyncio.run(scheduler.process_queued_tasks())
+    db_session.refresh(task)
+    assert task.status == "failed" and task.error_message == "尚未配置Hermes连接" and task.finished_at is not None and task.duration_ms == 0
 
 
 def test_queue_subscription_is_idempotent_while_active(
