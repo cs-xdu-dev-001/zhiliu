@@ -99,7 +99,7 @@ def test_singleton_race_replays_update(monkeypatch):
     async def probe(self): return HermesProbe(version="r")
     monkeypatch.setattr(integration_service.HermesClient, "probe", probe)
     result = __import__('asyncio').run(integration_service.HermesIntegrationService(db, Settings()).save_and_test(HermesConnectionUpdate(base_url="https://winner", api_key="")))
-    assert db.row.base_url == "https://winner" and db.row.encrypted_api_key == "old"
+    assert db.row.base_url == "https://winner" and SecretCipher(Settings.integration_secret_key).decrypt(db.row.encrypted_api_key) == "old"
     assert result.status == "connected"
 
 
