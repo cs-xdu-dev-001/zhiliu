@@ -13,6 +13,19 @@ class ApiModel(BaseModel):
         alias_generator=to_camel,
     )
 
+class HermesConnectionUpdate(ApiModel):
+    base_url: str = Field(min_length=1, max_length=500)
+    api_key: str = Field(default="", max_length=500)
+
+class HermesConnectionResponse(ApiModel):
+    base_url: str | None = None
+    api_key_configured: bool = False
+    api_key_hint: str | None = None
+    status: Literal["unconfigured", "unreachable", "unauthorized", "connected", "error"] = "unconfigured"
+    message: str = ""
+    checked_at: datetime | None = None
+    version: str | None = None
+
 
 class LoginRequest(ApiModel):
     username: str = Field(min_length=1, max_length=80)

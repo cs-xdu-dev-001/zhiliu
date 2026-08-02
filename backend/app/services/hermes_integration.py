@@ -1,0 +1,69 @@
+from datetime import datetime, timezone
+from urllib.parse import urlparse
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.core.crypto import SecretCipher, SecretDecryptionError
+from app.models import HermesIntegration
+from app.schemas import HermesConnectionResponse, HermesConnectionUpdate
+from app.services.hermes import HermesClient, HermesError, HermesUnauthorized, HermesUnavailable
+
+class HermesIntegrationService:
+    def __init__(self, db: Session, settings) -> None:
+        self.db, self.settings = db, settings
+        self.cipher = SecretCipher(settings.integration_secret_key)
+
+    def get_record(self):
+        return self.db.scalar(select(HermesIntegration).where(HermesIntegration.id == 1))
+
+    def response(self, record=None) -> HermesConnectionResponse:
+        record = record or self.get_record()
+        if record is None:
+            return HermesConnectionResponse(message="尚未配置Hermes连接")
+        return HermesConnectionResponse(base_url=record.base_url, api_key_configured=bool(record.encrypted_api_key), api_key_hint=record.api_key_hint, status=record.last_status, message=record.last_message, checked_at=record.last_checked_at, version=record.hermes_version)
+
+    @staticmethod
+    def _validate_url(value: str) -> None:
+        parsed = urlparse(value)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            raise ValueError("baseUrl必须是包含主机名的http或https地址")
+
+    async def save_and_test(self, payload: HermesConnectionUpdate) -> HermesConnectionResponse:
+        self._validate_url(payload.base_url)
+        record = self.get_record()
+        if record is None:
+            record = HermesIntegration(base_url=payload.base_url)
+            self.db.add(record)
+        else:
+            record.base_url = payload.base_url
+        if payload.api_key:
+            record.encrypted_api_key = self.cipher.encrypt(payload.api_key)
+            record.api_key_hint = "••••" + payload.api_key[-4:]
+        self.db.commit(); self.db.refresh(record)
+        return await self.test(record)
+
+    async def test(self, record=None) -> HermesConnectionResponse:
+        record = record or self.get_record()
+        if record is None or not record.base_url or not record.encrypted_api_key:
+            if record is not None:
+                record.last_status, record.last_message, record.last_checked_at = "unconfigured", "尚未配置Hermes连接", datetime.now(timezone.utc)
+                record.hermes_version = None; self.db.commit()
+            return self.response(record)
+        checked = datetime.now(timezone.utc)
+        try:
+            key = self.cipher.decrypt(record.encrypted_api_key)
+            probe = await HermesClient(base_url=record.base_url, api_key=key, timeout_seconds=self.settings.hermes_timeout_seconds).probe()
+            record.last_status, record.last_message, record.hermes_version = "connected", "Hermes连接正常", probe.version
+        except HermesUnauthorized as exc:
+            record.last_status, record.last_message, record.hermes_version = "unauthorized", str(exc), None
+        except HermesUnavailable as exc:
+            record.last_status, record.last_message, record.hermes_version = "unreachable", str(exc), None
+        except SecretDecryptionError as exc:
+            record.last_status, record.last_message, record.hermes_version = "error", str(exc), None
+        except HermesError as exc:
+            record.last_status, record.last_message, record.hermes_version = "error", str(exc), None
+        except Exception:
+            record.last_status, record.last_message, record.hermes_version = "error", "Hermes连接测试失败", None
+        record.last_checked_at = checked; self.db.commit(); self.db.refresh(record)
+        return self.response(record)
