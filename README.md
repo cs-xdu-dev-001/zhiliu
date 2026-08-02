@@ -42,6 +42,20 @@ API_SERVER_ENABLED=true
 API_SERVER_KEY=使用独立的高强度随机密钥
 ```
 
+若`API_SERVER_KEY`尚未配置，可用下面的命令安全生成；已有值时不要执行，以免让知流UI中保存的旧密钥失效：
+
+```bash
+mkdir -p ~/.hermes
+touch ~/.hermes/.env
+chmod 600 ~/.hermes/.env
+if ! grep -Eq '^API_SERVER_KEY=.+$' ~/.hermes/.env; then
+  HERMES_API_TOKEN="$(openssl rand -hex 32)"
+  sed -i '/^API_SERVER_KEY=/d' ~/.hermes/.env
+  printf '\nAPI_SERVER_KEY=%s\n' "$HERMES_API_TOKEN" >> ~/.hermes/.env
+  unset HERMES_API_TOKEN
+fi
+```
+
 重启并检查Hermes：
 
 ```bash
@@ -52,6 +66,42 @@ curl http://127.0.0.1:8642/health
 Hermes必须只监听`127.0.0.1:8642`，不要把8642端口开放到公网。知流后端在Linux VPS上使用宿主机网络，因此可以安全访问这个本地端口。
 
 在知流UI进入“订阅与任务→Hermes连接”，填写Hermes地址和API密钥后保存并测试。测试先以无认证GET `/health`证明网络可达，再以Bearer认证GET `/v1/capabilities`证明授权有效；只有提交任务并看到非空`hermesRunId`及新增情报，才算端到端验证成功。`HERMES_API_KEY`仅用于旧部署迁移fallback；UI会显示其掩码，首次测试后将其加密迁移到SQLite。新部署应直接从UI配置。
+
+## 微信Hermes写入知流
+
+这条链路由Hermes理解微信消息、完成检索与整理，再通过知流MCP写入情报、简报或长期监测。无需固定命令前缀。
+
+先生成独立Token，并分别保存到知流和Hermes环境文件。若已经配置，除非要轮换Token，否则不要重复执行：
+
+```bash
+cd /opt/zhiliu
+ZHILIU_TOKEN="$(openssl rand -hex 32)"
+sed -i '/^ZHILIU_MCP_TOKEN=/d' .env
+printf '\nZHILIU_MCP_TOKEN=%s\n' "$ZHILIU_TOKEN" >> .env
+mkdir -p ~/.hermes
+touch ~/.hermes/.env
+chmod 600 ~/.hermes/.env
+sed -i '/^ZHILIU_MCP_TOKEN=/d' ~/.hermes/.env
+printf '\nZHILIU_MCP_TOKEN=%s\n' "$ZHILIU_TOKEN" >> ~/.hermes/.env
+unset ZHILIU_TOKEN
+```
+
+`ZHILIU_MCP_TOKEN`用于Hermes调用知流；`API_SERVER_KEY`用于知流调用Hermes，方向相反且必须不同。不要在终端、日志或聊天中输出真实密钥。
+
+把`deploy/hermes/mcp-zhiliu.yaml.example`中的`mcp_servers.zhiliu`合并到现有`~/.hermes/config.yaml`，不要覆盖原文件。然后安装自然触发skill并重启：
+
+```bash
+mkdir -p ~/.hermes/skills/productivity/zhiliu-publisher
+cp /opt/zhiliu/deploy/hermes/skills/zhiliu-publisher/SKILL.md ~/.hermes/skills/productivity/zhiliu-publisher/SKILL.md
+cd /opt/zhiliu
+docker compose up -d --build backend web
+hermes gateway restart
+hermes mcp test zhiliu
+hermes mcp list
+hermes skills list
+```
+
+配置中的`http://127.0.0.1:8080/api/mcp`适用于Hermes和知流部署在同一台服务器、Web仅绑定本机8080端口的情况。验收时可直接在微信发送：“请检索今天最重要的三条Agent动态，整理好以后放进知流。”Hermes只有在MCP工具返回成功后才应确认写入；随后在知流“情报”和“报告”页核对内容与原始来源。
 
 ## VPS部署
 

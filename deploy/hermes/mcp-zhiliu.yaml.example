@@ -1,0 +1,9 @@
+mcp_servers:
+  zhiliu:
+    url: http://127.0.0.1:8080/api/mcp
+    headers:
+      Authorization: "Bearer ${ZHILIU_MCP_TOKEN}"
+    tools:
+      include:
+        - zhiliu_publish
+        - zhiliu_create_monitor
