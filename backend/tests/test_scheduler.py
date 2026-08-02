@@ -67,6 +67,31 @@ def test_process_marks_configuration_failure(db_session, subscription, monkeypat
     assert task.status == "failed" and task.error_message == "尚未配置Hermes连接" and task.finished_at is not None and task.duration_ms == 0
 
 
+def test_process_passes_resolved_client_to_run_service(db_session, subscription, monkeypatch):
+    task = TaskRun(subscription_id=subscription.id, status="queued"); db_session.add(task); db_session.commit()
+    class Factory:
+        def __enter__(self): return db_session
+        def __exit__(self, *args): return False
+    marker = object(); seen = {}
+    monkeypatch.setattr(scheduler, "SessionLocal", Factory)
+    monkeypatch.setattr(scheduler.HermesIntegrationService, "resolve_client", lambda *a: marker)
+    async def execute(self, task_id): seen.update(client=self.hermes_client, task_id=task_id)
+    monkeypatch.setattr(scheduler.RunService, "execute_task", execute)
+    asyncio.run(scheduler.process_queued_tasks())
+    assert seen == {"client": marker, "task_id": task.id}
+
+
+def test_process_marks_decryption_failure(db_session, subscription, monkeypatch):
+    task = TaskRun(subscription_id=subscription.id, status="queued"); db_session.add(task); db_session.commit()
+    class Factory:
+        def __enter__(self): return db_session
+        def __exit__(self, *args): return False
+    monkeypatch.setattr(scheduler, "SessionLocal", Factory)
+    monkeypatch.setattr(scheduler.HermesIntegrationService, "resolve_client", lambda *a: (_ for _ in ()).throw(SecretDecryptionError("密钥解密失败")))
+    asyncio.run(scheduler.process_queued_tasks()); db_session.refresh(task)
+    assert task.status == "failed" and task.error_message == "密钥解密失败" and task.finished_at is not None
+
+
 def test_queue_subscription_is_idempotent_while_active(
     db_session: Session,
     subscription,
