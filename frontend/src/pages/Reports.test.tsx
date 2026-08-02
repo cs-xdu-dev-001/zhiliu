@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
-import { beforeEach, expect, it, vi } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import { Reports } from "./Reports";
 
@@ -24,14 +24,16 @@ beforeEach(() => {
   });
 });
 
-it("加载后直接展示最新简报", async () => {
+afterEach(cleanup);
+
+it("只展示摘要卡并进入独立报告详情", async () => {
   render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
       <Reports />
     </QueryClientProvider>,
   );
 
-  expect(await screen.findByText("这是最新简报正文。")).toBeVisible();
-  expect(screen.getAllByText("微信整理 · 今日AI热点简报")).toHaveLength(2);
-  expect(screen.queryByText("选择一份报告阅读")).not.toBeInTheDocument();
+  expect(await screen.findByRole("link", { name: /微信整理 · 今日AI热点简报/ })).toHaveAttribute("href", "/reports/1?from=%2Freports");
+  expect(screen.getByText("这是最新简报正文。")).toHaveClass("briefing-summary");
+  expect(screen.queryByRole("article", { name: "报告正文" })).not.toBeInTheDocument();
 });
