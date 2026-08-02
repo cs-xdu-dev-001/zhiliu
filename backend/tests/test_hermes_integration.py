@@ -5,6 +5,7 @@ from app.services.hermes import HermesProbe, HermesUnauthorized, HermesUnavailab
 
 from app.core.crypto import SecretCipher
 from app.core.crypto import SecretDecryptionError
+from app.core.config import Settings
 from app.models import HermesIntegration
 from app.schemas import HermesConnectionUpdate
 
@@ -15,6 +16,40 @@ def test_get_unconfigured_does_not_create_record(client, db_session):
     assert response.json()["apiKeyConfigured"] is False
     assert "apiKeyConfigured" in response.text and "apiKeyHint" in response.text
     assert db_session.query(HermesIntegration).count() == 0
+
+
+def test_environment_fallback_is_visible_without_creating_record(db_session):
+    settings = Settings(
+        hermes_base_url="https://environment-hermes.example.com",
+        hermes_api_key="environment-secret",
+        integration_secret_key="integration-secret-at-least-32-characters",
+        _env_file=None,
+    )
+    response = integration_service.HermesIntegrationService(db_session, settings).response()
+    assert response.base_url == "https://environment-hermes.example.com"
+    assert response.api_key_configured is True
+    assert response.api_key_hint == "••••cret"
+    assert "environment-secret" not in response.message
+    assert db_session.query(HermesIntegration).count() == 0
+
+
+def test_testing_environment_fallback_migrates_it_to_encrypted_storage(db_session, monkeypatch):
+    settings = Settings(
+        hermes_base_url="https://environment-hermes.example.com",
+        hermes_api_key="environment-secret",
+        integration_secret_key="integration-secret-at-least-32-characters",
+        _env_file=None,
+    )
+    async def probe(self):
+        return HermesProbe(version="env")
+    monkeypatch.setattr(integration_service.HermesClient, "probe", probe)
+    service = integration_service.HermesIntegrationService(db_session, settings)
+    response = __import__('asyncio').run(service.test())
+    record = db_session.query(HermesIntegration).one()
+    assert response.status == "connected"
+    assert record.base_url == settings.hermes_base_url
+    assert record.encrypted_api_key != settings.hermes_api_key
+    assert service.cipher.decrypt(record.encrypted_api_key) == settings.hermes_api_key
 
 def test_put_saves_and_probes(client, db_session, monkeypatch):
     calls = []

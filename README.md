@@ -51,7 +51,7 @@ curl http://127.0.0.1:8642/health
 
 Hermes必须只监听`127.0.0.1:8642`，不要把8642端口开放到公网。知流后端在Linux VPS上使用宿主机网络，因此可以安全访问这个本地端口。
 
-在知流UI进入“订阅与任务→Hermes连接”，填写Hermes地址和API密钥后保存并测试。测试先以无认证GET `/health`证明网络可达，再以Bearer认证GET `/v1/capabilities`证明授权有效；只有提交任务并看到非空`hermesRunId`及新增情报，才算端到端验证成功。`HERMES_API_KEY`仅用于旧部署迁移fallback，新部署应从UI配置。
+在知流UI进入“订阅与任务→Hermes连接”，填写Hermes地址和API密钥后保存并测试。测试先以无认证GET `/health`证明网络可达，再以Bearer认证GET `/v1/capabilities`证明授权有效；只有提交任务并看到非空`hermesRunId`及新增情报，才算端到端验证成功。`HERMES_API_KEY`仅用于旧部署迁移fallback；UI会显示其掩码，首次测试后将其加密迁移到SQLite。新部署应直接从UI配置。
 
 ## VPS部署
 
@@ -77,7 +77,7 @@ docker compose ps
 docker compose logs -f backend
 ```
 
-默认在宿主机`8080`端口提供服务。当前Compose按Linux VPS设计，后端使用宿主机网络访问仅监听`127.0.0.1:8642`的Hermes；同时会在宿主机监听8010，因此防火墙必须同时拒绝公网访问8010和8080。建议使用宿主机现有Nginx或Caddy将域名HTTPS流量反向代理到`http://127.0.0.1:8080`。
+默认只在宿主机`127.0.0.1:8080`提供Web服务。当前Compose按Linux VPS设计，后端使用宿主机网络访问仅监听`127.0.0.1:8642`的Hermes；后端仍会在宿主机监听8010，因此防火墙必须拒绝公网访问8010，并将8080的本机绑定作为纵深保护。使用宿主机现有Nginx或Caddy将域名HTTPS流量反向代理到`http://127.0.0.1:8080`。
 
 Windows或macOS的Docker Desktop只有在显式启用host networking且验证可达性后才能沿用此配置；否则应改为桥接网络，并将`HERMES_BASE_URL`设为`http://host.docker.internal:8642`，同时让Hermes只接受受控的本机/容器网段访问。不要在未验证隔离边界时把8642暴露到公网。
 

@@ -18,6 +18,10 @@ class HermesIntegrationService:
     def get_record(self):
         return self.db.scalar(select(HermesIntegration).where(HermesIntegration.id == 1))
 
+    @staticmethod
+    def _key_hint(api_key: str) -> str:
+        return "••••" + api_key[-4:] if len(api_key) > 4 else "••••"
+
     def resolve_client(self, subscription, demo_client_factory):
         """Resolve the Hermes client for a task using managed, then environment config."""
         record = self.get_record()
@@ -42,6 +46,14 @@ class HermesIntegrationService:
     def response(self, record=None) -> HermesConnectionResponse:
         record = record or self.get_record()
         if record is None:
+            environment_key = self.settings.hermes_api_key.strip()
+            if environment_key:
+                return HermesConnectionResponse(
+                    base_url=self.settings.hermes_base_url,
+                    api_key_configured=True,
+                    api_key_hint=self._key_hint(environment_key),
+                    message="检测到环境变量fallback，测试连接后会迁移到托管配置",
+                )
             return HermesConnectionResponse(message="尚未配置Hermes连接")
         return HermesConnectionResponse(base_url=record.base_url, api_key_configured=bool(record.encrypted_api_key), api_key_hint=record.api_key_hint, status=record.last_status, message=record.last_message, checked_at=record.last_checked_at, version=record.hermes_version)
 
@@ -61,14 +73,16 @@ class HermesIntegrationService:
         api_key = payload.api_key.strip()
         record = self.get_record()
         is_new = record is None
+        environment_key = getattr(self.settings, "hermes_api_key", "").strip()
+        effective_api_key = api_key or (environment_key if is_new else "")
         if record is None:
             record = HermesIntegration(id=1, base_url=base_url)
             self.db.add(record)
         else:
             record.base_url = base_url
-        if api_key:
-            record.encrypted_api_key = self.cipher.encrypt(api_key)
-            record.api_key_hint = "••••" + api_key[-4:] if len(api_key) > 4 else "••••"
+        if effective_api_key:
+            record.encrypted_api_key = self.cipher.encrypt(effective_api_key)
+            record.api_key_hint = self._key_hint(effective_api_key)
         try:
             self.db.commit(); self.db.refresh(record)
         except IntegrityError as integrity_exc:
@@ -79,9 +93,9 @@ class HermesIntegrationService:
             if record is None:
                 raise integrity_exc
             record.base_url = base_url
-            if api_key:
-                record.encrypted_api_key = self.cipher.encrypt(api_key)
-                record.api_key_hint = "••••" + api_key[-4:] if len(api_key) > 4 else "••••"
+            if effective_api_key:
+                record.encrypted_api_key = self.cipher.encrypt(effective_api_key)
+                record.api_key_hint = self._key_hint(effective_api_key)
             try:
                 self.db.commit(); self.db.refresh(record)
             except Exception:
@@ -92,6 +106,13 @@ class HermesIntegrationService:
 
     async def test(self, record=None) -> HermesConnectionResponse:
         record = record or self.get_record()
+        if record is None and self.settings.hermes_api_key.strip():
+            return await self.save_and_test(
+                HermesConnectionUpdate(
+                    base_url=self.settings.hermes_base_url,
+                    api_key=self.settings.hermes_api_key,
+                )
+            )
         if record is None or not record.base_url or not record.encrypted_api_key:
             if record is not None:
                 record.last_status, record.last_message, record.last_checked_at = "unconfigured", "尚未配置Hermes连接", datetime.now(timezone.utc)
