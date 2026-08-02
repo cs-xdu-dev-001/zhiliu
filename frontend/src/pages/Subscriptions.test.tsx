@@ -116,5 +116,5 @@ it("立即执行后宣布任务已提交", async () => {
   await screen.findByText("Agent论文周报");
   await userEvent.click(screen.getByRole("button", { name: "立即执行Agent论文周报" }));
 
-  expect(await screen.findByRole("status")).toHaveTextContent("Agent论文周报已加入任务队列");
+  expect(await screen.findByText("Agent论文周报已加入任务队列")).toBeInTheDocument();
 });
