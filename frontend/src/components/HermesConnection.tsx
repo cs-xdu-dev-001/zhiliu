@@ -15,7 +15,7 @@ export function HermesConnection() {
   function configure() { setBaseUrl(query.data?.baseUrl ?? ""); setApiKey(""); save.reset(); setOpen(true); }
   const d = query.data;
   return <section className="hermes-connection" aria-label="Hermes连接">
-    <div className="hermes-summary"><div><h2>Hermes连接</h2>{query.isPending ? <p role="status">正在检查连接…</p> : query.isError ? <p role="alert">连接信息加载失败，请重试</p> : <p role="status" className={`hermes-status ${d?.status ?? "error"}`}>{d ? `${labels[d.status]}：${d.message}` : "尚未配置Hermes服务"}</p>}</div>
+    <div className="hermes-summary"><div><h2>Hermes连接</h2>{query.isPending ? <p role="status">正在检查连接…</p> : query.isError ? <p role="alert">连接信息加载失败，请重试</p> : <p role="status" className={`hermes-status ${d?.status ?? "error"}`}>{d ? `${labels[d.status] ?? "连接状态未知"}：${d.message ?? "尚未配置Hermes连接"}` : "尚未配置Hermes服务"}</p>}</div>
       {d && <div className="hermes-meta"><span>{d.baseUrl}</span>{d.apiKeyHint && <span>密钥 {d.apiKeyHint}</span>}{d.version && <span>版本 {d.version}</span>}{d.checkedAt && <span>{new Date(d.checkedAt).toLocaleString()}</span>}</div>}
     </div><div className="hermes-actions"><button className="secondary-button" onClick={() => test.mutate()} disabled={!d?.apiKeyConfigured || test.isPending}>{test.isPending ? "正在测试" : "测试连接"}</button><button className="primary-button" onClick={configure}>配置连接</button></div>
     {test.isError && <p role="alert" className="form-error">{test.error.message}</p>}
