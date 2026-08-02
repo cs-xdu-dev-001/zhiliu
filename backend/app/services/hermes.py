@@ -42,6 +42,10 @@ class HermesUnavailable(HermesError):
     pass
 
 
+class HermesUnauthorized(HermesError):
+    pass
+
+
 class HermesTimeout(HermesError):
     pass
 
@@ -80,6 +84,11 @@ class HermesResult(ApiModel):
     briefing: HermesBriefing
     items: list[HermesItem]
     raw_output: str
+
+
+class HermesProbe(ApiModel):
+    version: str | None = None
+    platform: str | None = None
 
 
 class HermesClient:
@@ -125,6 +134,32 @@ class HermesClient:
         except HermesError:
             raise
         except (httpx.HTTPError, KeyError, TypeError, ValueError) as exc:
+            raise HermesUnavailable(f"Hermes API不可用: {exc}") from exc
+        finally:
+            if owns_client:
+                await client.aclose()
+
+    async def probe(self) -> HermesProbe:
+        owns_client = self._external_client is None
+        client = self._external_client or httpx.AsyncClient(timeout=httpx.Timeout(self.timeout_seconds))
+        try:
+            health = await client.get(f"{self.base_url}/health")
+            health.raise_for_status()
+            health_data = health.json()
+            if not isinstance(health_data, dict):
+                raise ValueError("响应不是JSON对象")
+
+            capabilities = await client.get(f"{self.base_url}/v1/capabilities", headers=self._headers)
+            if capabilities.status_code in {401, 403}:
+                raise HermesUnauthorized("Hermes拒绝了当前密钥")
+            capabilities.raise_for_status()
+            capabilities_data = capabilities.json()
+            if not isinstance(capabilities_data, dict):
+                raise ValueError("响应不是JSON对象")
+            return HermesProbe.model_validate(health_data)
+        except HermesUnauthorized:
+            raise
+        except Exception as exc:
             raise HermesUnavailable(f"Hermes API不可用: {exc}") from exc
         finally:
             if owns_client:
