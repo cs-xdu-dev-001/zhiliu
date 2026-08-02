@@ -93,3 +93,18 @@ class TaskRun(Base):
 
     subscription: Mapped[Subscription] = relationship(back_populates="runs")
 
+
+class HermesIntegration(Base):
+    __tablename__ = "hermes_integrations"
+
+    id: Mapped[int] = mapped_column(primary_key=True, default=1)
+    base_url: Mapped[str] = mapped_column(String(500), nullable=False)
+    encrypted_api_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    api_key_hint: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    last_status: Mapped[str] = mapped_column(String(32), default="unconfigured")
+    last_message: Mapped[str] = mapped_column(String(500), default="尚未配置Hermes连接")
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    hermes_version: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+

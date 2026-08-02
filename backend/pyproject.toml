@@ -5,6 +5,7 @@ requires-python = ">=3.12"
 dependencies = [
   "apscheduler>=3.11,<4",
   "croniter>=6,<7",
+  "cryptography>=45,<46",
   "fastapi>=0.116,<0.117",
   "httpx>=0.28,<1",
   "pwdlib[argon2]>=0.2,<1",

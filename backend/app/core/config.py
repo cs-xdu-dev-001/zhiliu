@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     hermes_base_url: str = "http://127.0.0.1:8642"
     hermes_api_key: str = ""
     hermes_timeout_seconds: int = 180
+    integration_secret_key: str = "development-integration-secret-key-32"
 
     @model_validator(mode="after")
     def validate_production_secrets(self) -> "Settings":
@@ -26,6 +27,8 @@ class Settings(BaseSettings):
                 raise ValueError("JWT_SECRET必须替换为至少32位的随机值")
             if self.admin_password == "demo-password" or len(self.admin_password) < 12:
                 raise ValueError("ADMIN_PASSWORD必须替换为至少12位的独立密码")
+            if self.integration_secret_key == "development-integration-secret-key-32" or len(self.integration_secret_key) < 32:
+                raise ValueError("INTEGRATION_SECRET_KEY必须替换为至少32位的随机值")
         return self
 
 
