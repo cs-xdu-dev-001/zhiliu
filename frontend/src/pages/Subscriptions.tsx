@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { Link } from "wouter";
 
 import { api } from "../api";
+import { HermesConnection } from "../components/HermesConnection";
 import type { IntelligenceKind, Subscription, SubscriptionInput } from "../types";
 
 const emptyForm: SubscriptionInput = {
@@ -112,6 +113,7 @@ export function Subscriptions() {
 
   return (
     <section className="stack-lg">
+      <HermesConnection />
       <div className="settings-toolbar">
         <Link className="secondary-link" href="/tasks"><History size={17} />任务记录</Link>
         <button className="primary-compact" onClick={openNew}><Plus size={17} />新建订阅</button>

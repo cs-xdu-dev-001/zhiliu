@@ -56,6 +56,14 @@ button:disabled { cursor: wait; }
 .empty-state { min-height: 180px; display: grid; place-items: center; align-content: center; gap: 10px; color: var(--muted); border: 1px dashed #cbd4ce; border-radius: 12px; }
 .empty-state p { margin: 0; }
 .stack-lg { display: grid; gap: 14px; }
+.hermes-connection { border: 1px solid var(--line); border-radius: 12px; background: var(--paper); padding: 16px; display: grid; gap: 14px; }
+.hermes-summary { display:flex; justify-content:space-between; gap:16px; min-width:0; }
+.hermes-summary h2 { margin:0 0 6px; font-size:17px; }
+.hermes-summary p { margin:0; font-size:14px; }
+.hermes-status { font-weight:650; }.hermes-status.connected { color:var(--signal); }.hermes-status.unauthorized,.hermes-status.error { color:var(--danger); }.hermes-status.disconnected { color:var(--amber); }.hermes-status.unconfigured { color:var(--muted); }
+.hermes-meta { display:flex; flex-wrap:wrap; gap:8px 14px; color:var(--muted); font-size:14px; align-items:center; }
+.hermes-actions { display:flex; gap:10px; justify-content:flex-end; }.hermes-actions button { min-height:44px; }
+@media (max-width:640px) { .hermes-summary { display:grid; gap:10px; } .hermes-actions { justify-content:stretch; } .hermes-actions button { flex:1; } }
 .stack-xl { display: grid; gap: 28px; }
 .filter-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; overflow: hidden; }
 .filter-bar select { height: 44px; border: 1px solid var(--line); border-radius: 7px; color: var(--ink); background: white; padding: 0 9px; }
