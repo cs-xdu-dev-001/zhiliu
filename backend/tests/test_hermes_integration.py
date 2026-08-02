@@ -42,6 +42,23 @@ def test_empty_key_keeps_old(auth_client, db_session, monkeypatch):
     record = db_session.query(HermesIntegration).one()
     assert record.encrypted_api_key == first and response.json()["apiKeyHint"] == "••••-key"
 
+def test_short_key_is_masked_and_inputs_stripped(auth_client, db_session, monkeypatch):
+    async def probe(self): return HermesProbe(version="1")
+    monkeypatch.setattr(integration_service.HermesClient, "probe", probe)
+    response = auth_client.put("/api/integrations/hermes", json={"baseUrl":" https://hermes.example.com/ ", "apiKey":" ab "})
+    assert response.json()["baseUrl"] == "https://hermes.example.com"
+    assert response.json()["apiKeyHint"] == "••••" and " ab " not in response.text
+
+def test_generic_error_safe_and_clears_version(auth_client, monkeypatch):
+    async def good(self): return HermesProbe(version="9")
+    monkeypatch.setattr(integration_service.HermesClient, "probe", good)
+    auth_client.put("/api/integrations/hermes", json={"baseUrl":"https://hermes.example.com", "apiKey":"secret"})
+    async def bad(self): raise HermesError("secret-leak")
+    monkeypatch.setattr(integration_service.HermesClient, "probe", bad)
+    response = auth_client.post("/api/integrations/hermes/test")
+    assert response.json()["status"] == "error" and response.json()["message"] == "Hermes连接测试失败"
+    assert "secret-leak" not in response.text and response.json()["version"] is None
+
 @pytest.mark.parametrize("url", ["ftp://hermes.example.com", "https:///missing-host"])
 def test_invalid_url(auth_client, url):
     response = auth_client.put("/api/integrations/hermes", json={"baseUrl":url, "apiKey":"x"})

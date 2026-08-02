@@ -26,21 +26,30 @@ class HermesIntegrationService:
     @staticmethod
     def _validate_url(value: str) -> None:
         parsed = urlparse(value)
+        try:
+            _ = parsed.port
+        except ValueError as exc:
+            raise ValueError("baseUrl端口无效") from exc
         if parsed.scheme not in {"http", "https"} or not parsed.hostname:
             raise ValueError("baseUrl必须是包含主机名的http或https地址")
 
     async def save_and_test(self, payload: HermesConnectionUpdate) -> HermesConnectionResponse:
-        self._validate_url(payload.base_url)
+        base_url = payload.base_url.strip().rstrip("/")
+        self._validate_url(base_url)
+        api_key = payload.api_key.strip()
         record = self.get_record()
         if record is None:
-            record = HermesIntegration(base_url=payload.base_url)
+            record = HermesIntegration(id=1, base_url=base_url)
             self.db.add(record)
         else:
-            record.base_url = payload.base_url
-        if payload.api_key:
-            record.encrypted_api_key = self.cipher.encrypt(payload.api_key)
-            record.api_key_hint = "••••" + payload.api_key[-4:]
-        self.db.commit(); self.db.refresh(record)
+            record.base_url = base_url
+        if api_key:
+            record.encrypted_api_key = self.cipher.encrypt(api_key)
+            record.api_key_hint = "••••" + api_key[-4:] if len(api_key) > 4 else "••••"
+        try:
+            self.db.commit(); self.db.refresh(record)
+        except Exception:
+            self.db.rollback(); raise
         return await self.test(record)
 
     async def test(self, record=None) -> HermesConnectionResponse:
@@ -51,6 +60,7 @@ class HermesIntegrationService:
                 record.hermes_version = None; self.db.commit()
             return self.response(record)
         checked = datetime.now(timezone.utc)
+        record.hermes_version = None
         try:
             key = self.cipher.decrypt(record.encrypted_api_key)
             probe = await HermesClient(base_url=record.base_url, api_key=key, timeout_seconds=self.settings.hermes_timeout_seconds).probe()
@@ -61,9 +71,13 @@ class HermesIntegrationService:
             record.last_status, record.last_message, record.hermes_version = "unreachable", str(exc), None
         except SecretDecryptionError as exc:
             record.last_status, record.last_message, record.hermes_version = "error", str(exc), None
-        except HermesError as exc:
-            record.last_status, record.last_message, record.hermes_version = "error", str(exc), None
+        except HermesError:
+            record.last_status, record.last_message, record.hermes_version = "error", "Hermes连接测试失败", None
         except Exception:
             record.last_status, record.last_message, record.hermes_version = "error", "Hermes连接测试失败", None
-        record.last_checked_at = checked; self.db.commit(); self.db.refresh(record)
+        record.last_checked_at = checked
+        try:
+            self.db.commit(); self.db.refresh(record)
+        except Exception:
+            self.db.rollback(); raise
         return self.response(record)
