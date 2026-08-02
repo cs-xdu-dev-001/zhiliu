@@ -11,13 +11,28 @@ from app.api.subscriptions import router as subscriptions_router
 from app.db import Base, engine
 from app.db import SessionLocal
 from app.core.config import get_settings
+from app.core.config import Settings
+from app.mcp_server.server import SessionFactory, build_mcp_asgi
 from app.seed import seed_database
 from app.services.scheduler import start_scheduler, stop_scheduler
 
 
-def create_app(*, start_background_scheduler: bool | None = None) -> FastAPI:
-    settings = get_settings()
-    should_start_scheduler = settings.scheduler_enabled if start_background_scheduler is None else start_background_scheduler
+def create_app(
+    *,
+    start_background_scheduler: bool | None = None,
+    settings: Settings | None = None,
+    mcp_session_factory: SessionFactory = SessionLocal,
+) -> FastAPI:
+    runtime_settings = settings or get_settings()
+    should_start_scheduler = (
+        runtime_settings.scheduler_enabled
+        if start_background_scheduler is None
+        else start_background_scheduler
+    )
+    mcp_server, mcp_asgi = build_mcp_asgi(
+        runtime_settings.zhiliu_mcp_token,
+        mcp_session_factory,
+    )
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
@@ -25,13 +40,14 @@ def create_app(*, start_background_scheduler: bool | None = None) -> FastAPI:
         with SessionLocal() as db:
             seed_database(
                 db,
-                demo_mode=settings.demo_mode,
+                demo_mode=runtime_settings.demo_mode,
             )
-        if should_start_scheduler:
-            start_scheduler()
-        yield
-        if should_start_scheduler:
-            stop_scheduler()
+        async with mcp_server.session_manager.run():
+            if should_start_scheduler:
+                start_scheduler()
+            yield
+            if should_start_scheduler:
+                stop_scheduler()
 
     application = FastAPI(title="知流", version="0.1.0", lifespan=lifespan)
     application.include_router(subscriptions_router)
@@ -43,6 +59,8 @@ def create_app(*, start_background_scheduler: bool | None = None) -> FastAPI:
     @application.get("/api/health")
     def health() -> dict[str, str]:
         return {"status": "ok", "service": "zhiliu"}
+
+    application.mount("/api", mcp_asgi)
 
     return application
 
