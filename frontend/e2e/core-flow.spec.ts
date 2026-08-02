@@ -31,16 +31,15 @@ test("阅读情报并触发订阅", async ({ page }, testInfo) => {
   await expect(page.getByRole("heading", { name: "Hermes连接" })).toBeVisible();
   await expect(page.getByRole("button", { name: "测试连接" })).toBeVisible();
   await capture(page, testInfo, "subscriptions");
-  if (!(await page.getByRole("button", { name: /立即执行/ }).count())) {
-    await page.getByRole("button", { name: "新建订阅" }).click();
-    await page.getByLabel("订阅名称").fill("E2E测试订阅");
-    await page.getByLabel("关键词").fill("测试");
-    await page.getByLabel("Hermes任务说明").fill("执行E2E测试任务");
-    await page.getByRole("button", { name: "保存订阅" }).click();
-    await expect(page.getByText("订阅已创建")).toBeVisible();
-    await expect(page.getByRole("button", { name: /立即执行/ }).first()).toBeVisible();
-  }
-  await page.getByRole("button", { name: "立即执行" }).first().click();
+  const subscriptionName = `E2E测试订阅-${testInfo.project.name}`;
+  await page.getByRole("button", { name: "新建订阅" }).click();
+  await page.getByLabel("订阅名称").fill(subscriptionName);
+  await page.getByLabel("关键词").fill("测试");
+  await page.getByLabel("Hermes任务说明").fill("执行E2E测试任务");
+  await page.getByRole("button", { name: "保存订阅" }).click();
+  await expect(page.getByText("订阅已创建")).toBeVisible();
+  await page.getByRole("button", { name: `立即执行${subscriptionName}` }).click();
+  await expect(page.getByText(`${subscriptionName}已加入任务队列`)).toBeVisible();
   await page.getByRole("link", { name: "任务记录" }).click();
   await expect(page.getByText(/已排队|执行中|已完成/).first()).toBeVisible();
   await capture(page, testInfo, "tasks");
