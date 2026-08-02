@@ -2,7 +2,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.core.security import CurrentUser
 from app.db import get_db
 from app.models import Briefing
 from app.schemas import BriefingPage, BriefingResponse
@@ -12,7 +11,6 @@ router = APIRouter(prefix="/api/briefings", tags=["briefings"])
 
 @router.get("", response_model=BriefingPage)
 def list_briefings(
-    _: CurrentUser,
     db: Session = Depends(get_db),
     kind: str | None = None,
     limit: int = Query(default=20, ge=1, le=100),
@@ -27,7 +25,7 @@ def list_briefings(
 
 
 @router.get("/{briefing_id}", response_model=BriefingResponse)
-def get_briefing(briefing_id: int, _: CurrentUser, db: Session = Depends(get_db)) -> Briefing:
+def get_briefing(briefing_id: int, db: Session = Depends(get_db)) -> Briefing:
     record = db.get(Briefing, briefing_id)
     if record is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="简报不存在")

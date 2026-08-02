@@ -2,14 +2,13 @@ from collections.abc import Generator
 
 import pytest
 from fastapi.testclient import TestClient
-from pwdlib import PasswordHash
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.db import Base, get_db
 from app.main import create_app
-from app.models import IntelligenceItem, Subscription, TaskRun, User
+from app.models import IntelligenceItem, Subscription, TaskRun
 
 
 @pytest.fixture
@@ -36,28 +35,6 @@ def client(db_session: Session) -> Generator[TestClient, None, None]:
     app.dependency_overrides[get_db] = override_db
     with TestClient(app) as test_client:
         yield test_client
-
-
-@pytest.fixture
-def seeded_user(db_session: Session) -> User:
-    user = User(
-        username="admin",
-        password_hash=PasswordHash.recommended().hash("test-pass"),
-    )
-    db_session.add(user)
-    db_session.commit()
-    db_session.refresh(user)
-    return user
-
-
-@pytest.fixture
-def auth_client(client: TestClient, seeded_user: User) -> TestClient:
-    response = client.post(
-        "/api/auth/login",
-        json={"username": seeded_user.username, "password": "test-pass"},
-    )
-    assert response.status_code == 204
-    return client
 
 
 @pytest.fixture

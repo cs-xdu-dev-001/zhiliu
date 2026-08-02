@@ -5,7 +5,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.core.security import CurrentUser
 from app.db import get_db
 from app.models import Briefing, IntelligenceItem, Subscription, TaskRun
 from app.schemas import (
@@ -41,7 +40,6 @@ def serialize_item(record: IntelligenceItem) -> IntelligenceItemResponse:
 
 @router.get("/items", response_model=ItemPage)
 def list_items(
-    _: CurrentUser,
     db: Session = Depends(get_db),
     kind: str | None = None,
     state: Literal["unread", "saved", "ignored"] | None = None,
@@ -76,7 +74,6 @@ def list_items(
 def update_item_state(
     item_id: int,
     payload: ItemStateUpdate,
-    _: CurrentUser,
     db: Session = Depends(get_db),
 ) -> IntelligenceItemResponse:
     record = db.get(IntelligenceItem, item_id)
@@ -92,7 +89,7 @@ def update_item_state(
 
 
 @router.get("/dashboard", response_model=DashboardResponse)
-def dashboard(_: CurrentUser, db: Session = Depends(get_db)) -> DashboardResponse:
+def dashboard(db: Session = Depends(get_db)) -> DashboardResponse:
     unread_count = db.scalar(
         select(func.count()).select_from(IntelligenceItem).where(
             IntelligenceItem.is_read.is_(False), IntelligenceItem.is_ignored.is_(False)

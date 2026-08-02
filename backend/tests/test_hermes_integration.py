@@ -8,22 +8,22 @@ from app.core.crypto import SecretDecryptionError
 from app.models import HermesIntegration
 from app.schemas import HermesConnectionUpdate
 
-def test_get_unconfigured_does_not_create_record(auth_client, db_session):
-    response = auth_client.get("/api/integrations/hermes")
+def test_get_unconfigured_does_not_create_record(client, db_session):
+    response = client.get("/api/integrations/hermes")
     assert response.status_code == 200
     assert response.json()["status"] == "unconfigured"
     assert response.json()["apiKeyConfigured"] is False
     assert "apiKeyConfigured" in response.text and "apiKeyHint" in response.text
     assert db_session.query(HermesIntegration).count() == 0
 
-def test_put_saves_and_probes(auth_client, db_session, monkeypatch):
+def test_put_saves_and_probes(client, db_session, monkeypatch):
     calls = []
     async def probe(self):
         calls.append(1)
         return HermesProbe(version="1.2.3")
     monkeypatch.setattr(integration_service.HermesClient, "probe", probe)
     secret = "secret-a9f2"
-    response = auth_client.put("/api/integrations/hermes", json={"baseUrl":"https://hermes.example.com", "apiKey":secret})
+    response = client.put("/api/integrations/hermes", json={"baseUrl":"https://hermes.example.com", "apiKey":secret})
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "connected" and body["version"] == "1.2.3"
@@ -33,51 +33,51 @@ def test_put_saves_and_probes(auth_client, db_session, monkeypatch):
     assert record.encrypted_api_key != secret
     assert integration_service.HermesIntegrationService(db_session, __import__('app.core.config', fromlist=['get_settings']).get_settings()).cipher.decrypt(record.encrypted_api_key) == secret
 
-def test_empty_key_keeps_old(auth_client, db_session, monkeypatch):
+def test_empty_key_keeps_old(client, db_session, monkeypatch):
     async def probe(self): return HermesProbe(version="1")
     monkeypatch.setattr(integration_service.HermesClient, "probe", probe)
-    auth_client.put("/api/integrations/hermes", json={"baseUrl":"https://hermes.example.com", "apiKey":"old-key"})
+    client.put("/api/integrations/hermes", json={"baseUrl":"https://hermes.example.com", "apiKey":"old-key"})
     first = db_session.query(HermesIntegration).one().encrypted_api_key
-    response = auth_client.put("/api/integrations/hermes", json={"baseUrl":"https://hermes.example.com", "apiKey":""})
+    response = client.put("/api/integrations/hermes", json={"baseUrl":"https://hermes.example.com", "apiKey":""})
     assert response.status_code == 200
     record = db_session.query(HermesIntegration).one()
     assert record.encrypted_api_key == first and response.json()["apiKeyHint"] == "••••-key"
 
-def test_short_key_is_masked_and_inputs_stripped(auth_client, db_session, monkeypatch):
+def test_short_key_is_masked_and_inputs_stripped(client, db_session, monkeypatch):
     async def probe(self): return HermesProbe(version="1")
     monkeypatch.setattr(integration_service.HermesClient, "probe", probe)
-    response = auth_client.put("/api/integrations/hermes", json={"baseUrl":" https://hermes.example.com/ ", "apiKey":" ab "})
+    response = client.put("/api/integrations/hermes", json={"baseUrl":" https://hermes.example.com/ ", "apiKey":" ab "})
     assert response.json()["baseUrl"] == "https://hermes.example.com"
     assert response.json()["apiKeyHint"] == "••••" and " ab " not in response.text
 
-def test_generic_error_safe_and_clears_version(auth_client, monkeypatch):
+def test_generic_error_safe_and_clears_version(client, monkeypatch):
     async def good(self): return HermesProbe(version="9")
     monkeypatch.setattr(integration_service.HermesClient, "probe", good)
-    auth_client.put("/api/integrations/hermes", json={"baseUrl":"https://hermes.example.com", "apiKey":"secret"})
+    client.put("/api/integrations/hermes", json={"baseUrl":"https://hermes.example.com", "apiKey":"secret"})
     async def bad(self): raise HermesError("secret-leak")
     monkeypatch.setattr(integration_service.HermesClient, "probe", bad)
-    response = auth_client.post("/api/integrations/hermes/test")
+    response = client.post("/api/integrations/hermes/test")
     assert response.json()["status"] == "error" and response.json()["message"] == "Hermes连接测试失败"
     assert "secret-leak" not in response.text and response.json()["version"] is None
 
 @pytest.mark.parametrize("url", ["ftp://hermes.example.com", "https:///missing-host"])
-def test_invalid_url(auth_client, url):
-    response = auth_client.put("/api/integrations/hermes", json={"baseUrl":url, "apiKey":"x"})
+def test_invalid_url(client, url):
+    response = client.put("/api/integrations/hermes", json={"baseUrl":url, "apiKey":"x"})
     assert response.status_code == 422
 
 @pytest.mark.parametrize("exc,status", [(HermesUnauthorized("no"), "unauthorized"), (HermesUnavailable("down"), "unreachable"), (HermesError("bad"), "error")])
-def test_test_status_mapping(auth_client, db_session, monkeypatch, exc, status):
+def test_test_status_mapping(client, db_session, monkeypatch, exc, status):
     async def probe(self): raise exc
     monkeypatch.setattr(integration_service.HermesClient, "probe", probe)
-    auth_client.put("/api/integrations/hermes", json={"baseUrl":"https://hermes.example.com", "apiKey":"key"})
-    response = auth_client.post("/api/integrations/hermes/test")
+    client.put("/api/integrations/hermes", json={"baseUrl":"https://hermes.example.com", "apiKey":"key"})
+    response = client.post("/api/integrations/hermes/test")
     assert response.json()["status"] == status
     assert db_session.query(HermesIntegration).one().last_checked_at is not None
 
-def test_test_unconfigured_skips_probe(auth_client, monkeypatch):
+def test_test_unconfigured_skips_probe(client, monkeypatch):
     def fail(*args, **kwargs): raise AssertionError("probe called")
     monkeypatch.setattr(integration_service.HermesClient, "probe", fail)
-    response = auth_client.post("/api/integrations/hermes/test")
+    response = client.post("/api/integrations/hermes/test")
     assert response.json()["status"] == "unconfigured"
 
 def test_singleton_race_replays_update(monkeypatch):

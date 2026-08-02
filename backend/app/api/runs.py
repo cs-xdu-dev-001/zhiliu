@@ -2,7 +2,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.core.security import CurrentUser
 from app.db import get_db
 from app.models import Subscription, TaskRun
 from app.schemas import TaskRunPage, TaskRunResponse
@@ -17,7 +16,6 @@ router = APIRouter(prefix="/api", tags=["runs"])
 )
 def queue_subscription_run(
     subscription_id: int,
-    _: CurrentUser,
     db: Session = Depends(get_db),
 ) -> TaskRun:
     subscription = db.get(Subscription, subscription_id)
@@ -42,7 +40,6 @@ def queue_subscription_run(
 
 @router.get("/runs", response_model=TaskRunPage)
 def list_runs(
-    _: CurrentUser,
     db: Session = Depends(get_db),
     limit: int = Query(default=30, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
@@ -60,7 +57,7 @@ def list_runs(
 
 
 @router.get("/runs/{run_id}", response_model=TaskRunResponse)
-def get_run(run_id: int, _: CurrentUser, db: Session = Depends(get_db)) -> TaskRun:
+def get_run(run_id: int, db: Session = Depends(get_db)) -> TaskRun:
     record = db.get(TaskRun, run_id)
     if record is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务不存在")

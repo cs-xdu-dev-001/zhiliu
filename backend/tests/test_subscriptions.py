@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 
 
-def test_create_subscription_returns_normalized_payload(auth_client: TestClient) -> None:
+def test_create_subscription_returns_normalized_payload(client: TestClient) -> None:
     payload = {
         "name": "Agent论文",
         "kind": "paper",
@@ -11,15 +11,15 @@ def test_create_subscription_returns_normalized_payload(auth_client: TestClient)
         "enabled": True,
     }
 
-    response = auth_client.post("/api/subscriptions", json=payload)
+    response = client.post("/api/subscriptions", json=payload)
 
     assert response.status_code == 201
     assert response.json()["keywords"] == ["LLM Agent"]
     assert response.json()["kind"] == "paper"
 
 
-def test_create_subscription_rejects_invalid_cron(auth_client: TestClient) -> None:
-    response = auth_client.post(
+def test_create_subscription_rejects_invalid_cron(client: TestClient) -> None:
+    response = client.post(
         "/api/subscriptions",
         json={
             "name": "错误任务",
@@ -34,8 +34,8 @@ def test_create_subscription_rejects_invalid_cron(auth_client: TestClient) -> No
     assert response.status_code == 422
 
 
-def test_update_and_delete_subscription(auth_client: TestClient, subscription) -> None:
-    update = auth_client.put(
+def test_update_and_delete_subscription(client: TestClient, subscription) -> None:
+    update = client.put(
         f"/api/subscriptions/{subscription.id}",
         json={
             "name": "AI热点精选",
@@ -46,7 +46,7 @@ def test_update_and_delete_subscription(auth_client: TestClient, subscription) -
             "enabled": False,
         },
     )
-    deleted = auth_client.delete(f"/api/subscriptions/{subscription.id}")
+    deleted = client.delete(f"/api/subscriptions/{subscription.id}")
 
     assert update.status_code == 200
     assert update.json()["name"] == "AI热点精选"

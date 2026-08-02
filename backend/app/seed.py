@@ -4,22 +4,15 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.security import hash_password
-from app.models import Briefing, IntelligenceItem, Subscription, TaskRun, User
+from app.models import Briefing, IntelligenceItem, Subscription, TaskRun
 from app.services.run_service import item_fingerprint
 
 
 def seed_database(
     db: Session,
     *,
-    username: str,
-    password: str,
     demo_mode: bool,
 ) -> None:
-    if db.scalar(select(User).limit(1)) is None:
-        db.add(User(username=username, password_hash=hash_password(password)))
-        db.commit()
-
     if not demo_mode or db.scalar(select(Subscription).limit(1)) is not None:
         return
 

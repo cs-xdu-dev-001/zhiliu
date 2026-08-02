@@ -4,7 +4,6 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.security import CurrentUser
 from app.db import get_db
 from app.models import Subscription
 from app.schemas import SubscriptionPayload, SubscriptionResponse
@@ -29,7 +28,7 @@ def serialize_subscription(record: Subscription) -> SubscriptionResponse:
 
 
 @router.get("", response_model=list[SubscriptionResponse])
-def list_subscriptions(_: CurrentUser, db: Session = Depends(get_db)) -> list[SubscriptionResponse]:
+def list_subscriptions(db: Session = Depends(get_db)) -> list[SubscriptionResponse]:
     records = db.scalars(select(Subscription).order_by(Subscription.created_at.desc())).all()
     return [serialize_subscription(record) for record in records]
 
@@ -37,7 +36,6 @@ def list_subscriptions(_: CurrentUser, db: Session = Depends(get_db)) -> list[Su
 @router.post("", response_model=SubscriptionResponse, status_code=status.HTTP_201_CREATED)
 def create_subscription(
     payload: SubscriptionPayload,
-    _: CurrentUser,
     db: Session = Depends(get_db),
 ) -> SubscriptionResponse:
     record = Subscription(
@@ -62,7 +60,7 @@ def get_subscription_or_404(db: Session, subscription_id: int) -> Subscription:
 
 
 @router.get("/{subscription_id}", response_model=SubscriptionResponse)
-def get_subscription(subscription_id: int, _: CurrentUser, db: Session = Depends(get_db)) -> SubscriptionResponse:
+def get_subscription(subscription_id: int, db: Session = Depends(get_db)) -> SubscriptionResponse:
     return serialize_subscription(get_subscription_or_404(db, subscription_id))
 
 
@@ -70,7 +68,6 @@ def get_subscription(subscription_id: int, _: CurrentUser, db: Session = Depends
 def update_subscription(
     subscription_id: int,
     payload: SubscriptionPayload,
-    _: CurrentUser,
     db: Session = Depends(get_db),
 ) -> SubscriptionResponse:
     record = get_subscription_or_404(db, subscription_id)
@@ -88,7 +85,6 @@ def update_subscription(
 @router.delete("/{subscription_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_subscription(
     subscription_id: int,
-    _: CurrentUser,
     db: Session = Depends(get_db),
 ) -> Response:
     record = get_subscription_or_404(db, subscription_id)

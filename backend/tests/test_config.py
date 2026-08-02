@@ -5,11 +5,9 @@ from app.core.config import Settings
 
 
 def test_production_rejects_default_secrets() -> None:
-    with pytest.raises(ValidationError, match="JWT_SECRET"):
+    with pytest.raises(ValidationError, match="INTEGRATION_SECRET_KEY"):
         Settings(
             app_env="production",
-            jwt_secret="change-me",
-            admin_password="demo-password",
             _env_file=None,
         )
 
@@ -17,8 +15,6 @@ def test_production_rejects_default_secrets() -> None:
 def test_production_accepts_explicit_secrets() -> None:
     settings = Settings(
         app_env="production",
-        jwt_secret="a-secure-random-secret-that-is-long-enough",
-        admin_password="a-unique-admin-password",
         integration_secret_key="production-integration-secret-that-is-long-enough",
         _env_file=None,
     )
@@ -34,8 +30,6 @@ def test_production_rejects_invalid_integration_secret(integration_secret_key: s
     with pytest.raises(ValidationError, match="INTEGRATION_SECRET_KEY"):
         Settings(
             app_env="production",
-            jwt_secret="a-secure-random-secret-that-is-long-enough",
-            admin_password="a-unique-admin-password",
             integration_secret_key=integration_secret_key,
             _env_file=None,
         )

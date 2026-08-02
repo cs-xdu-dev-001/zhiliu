@@ -1,9 +1,9 @@
 from fastapi.testclient import TestClient
 
 
-def test_list_items_and_mark_read(auth_client: TestClient, seeded_item) -> None:
-    listed = auth_client.get("/api/items?kind=news&state=unread")
-    updated = auth_client.patch(
+def test_list_items_and_mark_read(client: TestClient, seeded_item) -> None:
+    listed = client.get("/api/items?kind=news&state=unread")
+    updated = client.patch(
         f"/api/items/{seeded_item.id}",
         json={"isRead": True},
     )
@@ -15,16 +15,16 @@ def test_list_items_and_mark_read(auth_client: TestClient, seeded_item) -> None:
     assert updated.json()["isRead"] is True
 
 
-def test_dashboard_reports_unread_count(auth_client: TestClient, seeded_item) -> None:
-    response = auth_client.get("/api/dashboard")
+def test_dashboard_reports_unread_count(client: TestClient, seeded_item) -> None:
+    response = client.get("/api/dashboard")
 
     assert response.status_code == 200
     assert response.json()["unreadCount"] == 1
     assert response.json()["topItems"][0]["importance"] == 0.92
 
 
-def test_missing_item_returns_not_found(auth_client: TestClient) -> None:
-    response = auth_client.patch("/api/items/999", json={"isSaved": True})
+def test_missing_item_returns_not_found(client: TestClient) -> None:
+    response = client.patch("/api/items/999", json={"isSaved": True})
 
     assert response.status_code == 404
 

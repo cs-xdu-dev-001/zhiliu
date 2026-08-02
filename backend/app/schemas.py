@@ -27,16 +27,6 @@ class HermesConnectionResponse(ApiModel):
     version: str | None = None
 
 
-class LoginRequest(ApiModel):
-    username: str = Field(min_length=1, max_length=80)
-    password: str = Field(min_length=1, max_length=200)
-
-
-class UserResponse(ApiModel):
-    id: int
-    username: str
-
-
 IntelligenceKind = Literal["news", "paper", "job"]
 
 
