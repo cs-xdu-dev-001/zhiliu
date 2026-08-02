@@ -9,7 +9,6 @@ class Settings(BaseSettings):
 
     app_env: str = "development"
     database_url: str = "sqlite:///./data/zhiliu.db"
-    cookie_secure: bool = False
     scheduler_enabled: bool = True
     demo_mode: bool = True
     hermes_base_url: str = "http://127.0.0.1:8642"
