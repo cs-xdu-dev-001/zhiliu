@@ -102,6 +102,18 @@ def test_singleton_race_replays_update(monkeypatch):
     assert db.row.base_url == "https://winner" and SecretCipher(Settings.integration_secret_key).decrypt(db.row.encrypted_api_key) == "old"
     assert result.status == "connected"
 
+def test_unconfigured_record_commit_failure_rolls_back():
+    class DB:
+        def __init__(self): self.row = HermesIntegration(id=1, base_url="https://h", encrypted_api_key=None); self.rolled = False
+        def scalar(self, _): return self.row
+        def commit(self): raise RuntimeError("db")
+        def rollback(self): self.rolled = True
+    class Settings: integration_secret_key="integration-secret-at-least-32-characters"; hermes_timeout_seconds=1
+    db = DB()
+    with pytest.raises(RuntimeError):
+        __import__('asyncio').run(integration_service.HermesIntegrationService(db, Settings()).test())
+    assert db.rolled
+
 
 def test_secret_cipher_round_trip():
     cipher = SecretCipher("integration-secret-at-least-32-characters")

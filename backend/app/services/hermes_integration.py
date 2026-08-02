@@ -74,7 +74,11 @@ class HermesIntegrationService:
         if record is None or not record.base_url or not record.encrypted_api_key:
             if record is not None:
                 record.last_status, record.last_message, record.last_checked_at = "unconfigured", "尚未配置Hermes连接", datetime.now(timezone.utc)
-                record.hermes_version = None; self.db.commit()
+                record.hermes_version = None
+                try:
+                    self.db.commit()
+                except Exception:
+                    self.db.rollback(); raise
             return self.response(record)
         checked = datetime.now(timezone.utc)
         record.hermes_version = None
