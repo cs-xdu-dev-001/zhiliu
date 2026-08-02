@@ -92,7 +92,11 @@ async def process_queued_tasks() -> None:
                 task.error_message = str(exc)[:2000]
                 task.finished_at = datetime.now(timezone.utc)
                 task.duration_ms = 0
-                db.commit()
+                try:
+                    db.commit()
+                except Exception:
+                    db.rollback()
+                    raise
                 continue
             await RunService(db, client).execute_task(task.id)
 
