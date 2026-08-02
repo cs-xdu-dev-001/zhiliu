@@ -113,6 +113,40 @@ def test_existing_item_is_counted_as_skipped(db_session: Session) -> None:
     assert second.skipped_count == 1
 
 
+def test_concurrent_item_fingerprint_conflict_retries_as_skip(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = PublicationService(db_session)
+    insert_items = service._insert_items
+    first_attempt = True
+
+    def collide_once(subscription_id: int, payload: PublishPayload) -> tuple[int, int]:
+        nonlocal first_attempt
+        if first_attempt:
+            first_attempt = False
+            result = insert_items(subscription_id, payload)
+            db_session.flush()
+            db_session.commit()
+            raise IntegrityError(
+                "insert",
+                {},
+                RuntimeError(
+                    "UNIQUE constraint failed: intelligence_items.fingerprint"
+                ),
+            )
+        return insert_items(subscription_id, payload)
+
+    monkeypatch.setattr(service, "_insert_items", collide_once)
+
+    receipt = service.publish(publish_payload())
+
+    assert receipt.item_count == 0
+    assert receipt.skipped_count == 1
+    assert db_session.scalar(select(func.count()).select_from(IntelligenceItem)) == 1
+    assert db_session.scalar(select(func.count()).select_from(HermesPublication)) == 1
+
+
 def test_existing_system_category_is_reused_and_repaired(db_session: Session) -> None:
     category = Subscription(
         id=AUTO_SUBSCRIPTION_IDS["news"],
@@ -178,6 +212,36 @@ def test_unrelated_integrity_error_is_reported_as_safe_failure(
         service.publish(publish_payload())
 
     assert "database detail" not in str(raised.value)
+
+
+def test_unrelated_integrity_error_is_not_retried_when_item_already_exists(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = PublicationService(db_session)
+    service.publish(publish_payload(briefing=None))
+    commit_calls = 0
+    original_commit = db_session.commit
+
+    def fail_once() -> None:
+        nonlocal commit_calls
+        commit_calls += 1
+        if commit_calls == 1:
+            raise IntegrityError("insert", {}, RuntimeError("other unique constraint"))
+        original_commit()
+
+    monkeypatch.setattr(db_session, "commit", fail_once)
+
+    with pytest.raises(PublicationFailure, match="发布失败，未写入知流"):
+        service.publish(
+            publish_payload(
+                idempotencyKey="different-publication",
+                topic="另一批",
+                briefing=None,
+            )
+        )
+
+    assert commit_calls == 1
 
 
 def test_failure_rolls_back_items_briefing_and_receipt(

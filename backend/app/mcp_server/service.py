@@ -100,6 +100,15 @@ class PublicationService:
         if by_hash is not None:
             return self._receipt(by_hash, duplicate=True)
 
+        return self._persist(payload, digest, retry_item_conflict=True)
+
+    def _persist(
+        self,
+        payload: PublishPayload,
+        digest: str,
+        *,
+        retry_item_conflict: bool,
+    ) -> PublishReceipt:
         try:
             subscription = self._get_or_create_category(payload.kind)
             inserted, skipped = self._insert_items(subscription.id, payload)
@@ -115,7 +124,7 @@ class PublicationService:
             receipt = self._receipt(publication, duplicate=False)
             self.db.commit()
             return receipt
-        except IntegrityError:
+        except IntegrityError as error:
             self.db.rollback()
             by_key = self.db.scalar(
                 select(HermesPublication).where(
@@ -131,10 +140,43 @@ class PublicationService:
             )
             if by_hash is not None:
                 return self._receipt(by_hash, duplicate=True)
+            if retry_item_conflict and self._is_item_fingerprint_conflict(error):
+                try:
+                    if self._has_existing_item(payload):
+                        return self._persist(
+                            payload,
+                            digest,
+                            retry_item_conflict=False,
+                        )
+                except (PublicationConflict, PublicationFailure):
+                    raise
+                except Exception:
+                    self.db.rollback()
             raise PublicationFailure("发布失败，未写入知流") from None
         except Exception:
             self.db.rollback()
             raise PublicationFailure("发布失败，未写入知流") from None
+
+    def _has_existing_item(self, payload: PublishPayload) -> bool:
+        for item in payload.items:
+            normalized_url = normalize_url(str(item.url)).rstrip("/")
+            fingerprint = item_fingerprint(item.title, normalized_url)
+            if self.db.scalar(
+                select(IntelligenceItem.id).where(
+                    IntelligenceItem.fingerprint == fingerprint
+                )
+            ) is not None:
+                return True
+        return False
+
+    @staticmethod
+    def _is_item_fingerprint_conflict(error: IntegrityError) -> bool:
+        detail = str(error.orig).casefold()
+        return (
+            "intelligence_items" in detail
+            and "fingerprint" in detail
+            and ("unique" in detail or "duplicate" in detail)
+        )
 
     def _get_or_create_category(self, kind: str) -> Subscription:
         name = AUTO_CATEGORIES[kind]

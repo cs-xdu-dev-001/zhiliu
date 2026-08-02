@@ -40,4 +40,5 @@ def test_readme_warns_to_merge_config_and_separate_tokens() -> None:
     assert "不要覆盖" in readme
     assert "API_SERVER_KEY" in readme
     assert "必须不同" in readme
+    assert "location = /api/mcp { return 404; }" in readme
     assert "请检索今天最重要的三条Agent动态，整理好以后放进知流。" in readme

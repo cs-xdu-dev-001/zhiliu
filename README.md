@@ -129,6 +129,15 @@ docker compose logs -f backend
 
 默认只在宿主机`127.0.0.1:8080`提供Web服务。当前Compose按Linux VPS设计，后端使用宿主机网络访问仅监听`127.0.0.1:8642`的Hermes；后端仍会在宿主机监听8010，因此防火墙必须拒绝公网访问8010，并将8080的本机绑定作为纵深保护。使用宿主机现有Nginx或Caddy将域名HTTPS流量反向代理到`http://127.0.0.1:8080`。
 
+Hermes通过服务器回环地址直连MCP；公网域名不需要暴露该入口。在宿主机站点配置中把下面两条规则放在通用代理之前：
+
+```nginx
+location = /api/mcp { return 404; }
+location ^~ /api/mcp/ { return 404; }
+```
+
+这不会影响Hermes访问`http://127.0.0.1:8080/api/mcp`，但会阻止公网请求经域名进入MCP。
+
 Windows或macOS的Docker Desktop只有在显式启用host networking且验证可达性后才能沿用此配置；否则应改为桥接网络，并将`HERMES_BASE_URL`设为`http://host.docker.internal:8642`，同时让Hermes只接受受控的本机/容器网段访问。不要在未验证隔离边界时把8642暴露到公网。
 
 知流没有应用登录，公网暴露前必须启用部署层IP白名单。例如Nginx：
