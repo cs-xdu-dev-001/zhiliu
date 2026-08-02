@@ -1,3 +1,4 @@
+import pytest
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -108,6 +109,21 @@ def test_process_continues_after_first_configuration_failure(db_session, subscri
     monkeypatch.setattr(scheduler.RunService, "execute_task", execute)
     asyncio.run(scheduler.process_queued_tasks()); db_session.refresh(tasks[0]); db_session.refresh(tasks[1])
     assert tasks[0].status == "failed" and calls == [tasks[1].id]
+
+def test_process_rolls_back_when_failure_commit_raises(db_session, subscription, monkeypatch):
+    task = TaskRun(subscription_id=subscription.id, status="queued"); db_session.add(task); db_session.commit()
+    class Factory:
+        def __enter__(self): return db_session
+        def __exit__(self, *args): return False
+    monkeypatch.setattr(scheduler, "SessionLocal", Factory)
+    monkeypatch.setattr(scheduler.HermesIntegrationService, "resolve_client", lambda *a: (_ for _ in ()).throw(HermesUnavailable("x")))
+    original = db_session.commit; rolled = []
+    def bad_commit(): raise RuntimeError("db down")
+    monkeypatch.setattr(db_session, "commit", bad_commit)
+    monkeypatch.setattr(db_session, "rollback", lambda: rolled.append(True))
+    with pytest.raises(RuntimeError, match="db down"):
+        asyncio.run(scheduler.process_queued_tasks())
+    assert rolled
 
 
 def test_queue_subscription_is_idempotent_while_active(
