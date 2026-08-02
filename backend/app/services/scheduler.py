@@ -84,7 +84,15 @@ async def process_queued_tasks() -> None:
             task = db.get(TaskRun, task_id)
             if task is None or task.status != "queued":
                 continue
-            client = HermesIntegrationService(db, settings).resolve_client(task.subscription, DemoHermesClient)
+            try:
+                client = HermesIntegrationService(db, settings).resolve_client(task.subscription, DemoHermesClient)
+            except Exception as exc:
+                task.status = "failed"
+                task.error_message = str(exc)[:2000]
+                task.finished_at = datetime.now(timezone.utc)
+                task.duration_ms = 0
+                db.commit()
+                continue
             await RunService(db, client).execute_task(task.id)
 
 

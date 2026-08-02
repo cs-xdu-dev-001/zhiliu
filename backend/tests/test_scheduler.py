@@ -21,13 +21,13 @@ def test_resolver_prefers_database(db_session, subscription):
     db_session.add(HermesIntegration(id=1, base_url="https://db.example", encrypted_api_key=cipher.encrypt("db-key")))
     db_session.commit()
     client = HermesIntegrationService(db_session, Settings()).resolve_client(subscription, lambda s: object())
-    assert isinstance(client, HermesClient) and client.base_url == "https://db.example" and client._headers["Authorization"] == "Bearer db-key"
+    assert isinstance(client, HermesClient) and client.base_url == "https://db.example" and client.timeout_seconds == 7 and client._headers["Authorization"] == "Bearer db-key"
 
 
 def test_resolver_environment_fallback(db_session, subscription):
     settings = Settings(); settings.hermes_api_key = "env-key"
     client = HermesIntegrationService(db_session, settings).resolve_client(subscription, lambda s: object())
-    assert client.base_url == settings.hermes_base_url and client._headers["Authorization"] == "Bearer env-key"
+    assert client.base_url == settings.hermes_base_url and client.timeout_seconds == 7 and client._headers["Authorization"] == "Bearer env-key"
 
 
 def test_resolver_demo_and_unavailable(db_session, subscription):
