@@ -12,17 +12,9 @@ async function capture(page: Page, testInfo: TestInfo, name: string) {
   await page.screenshot({ path: testInfo.outputPath(`${name}.png`), fullPage: true });
 }
 
-async function login(page: Page, testInfo: TestInfo) {
-  await page.goto("/login");
-  await capture(page, testInfo, "login");
-  await page.getByLabel("用户名").fill("admin");
-  await page.getByLabel("密码").fill("demo-password");
-  await page.getByRole("button", { name: "登录" }).click();
+test("阅读情报并触发订阅", async ({ page }, testInfo) => {
+  await page.goto("/");
   await expect(page.getByRole("heading", { name: "今日情报" })).toBeVisible();
-}
-
-test("登录、阅读情报并触发订阅", async ({ page }, testInfo) => {
-  await login(page, testInfo);
   await expect(page.getByText("优先阅读")).toBeVisible();
   await capture(page, testInfo, "home");
 
@@ -38,6 +30,8 @@ test("登录、阅读情报并触发订阅", async ({ page }, testInfo) => {
 
   await page.getByRole("link", { name: "设置" }).first().click();
   await expect(page.getByRole("button", { name: "新建订阅" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Hermes连接" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "测试连接" })).toBeVisible();
   await capture(page, testInfo, "subscriptions");
   await page.getByRole("button", { name: "立即执行" }).first().click();
   await page.getByRole("link", { name: "任务记录" }).click();

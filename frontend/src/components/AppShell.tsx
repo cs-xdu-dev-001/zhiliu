@@ -1,9 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
-import { BookOpenText, House, ListFilter, LogOut, Radio, Settings2 } from "lucide-react";
-import { Link, Redirect, Route, Switch, useLocation } from "wouter";
-
-import { api, ApiError } from "../api";
-import type { User } from "../types";
+import { BookOpenText, House, ListFilter, Radio, Settings2 } from "lucide-react";
+import { Link, Route, Switch, useLocation } from "wouter";
 import { Feed } from "../pages/Feed";
 import { Home } from "../pages/Home";
 import { Reports } from "../pages/Reports";
@@ -27,17 +23,7 @@ const desktopNav = [
 ];
 
 export function AppShell() {
-  const [location, navigate] = useLocation();
-  const user = useQuery({ queryKey: ["me"], queryFn: () => api.get<User>("/api/auth/me"), retry: false });
-
-  if (user.isPending) return <div className="app-loader">正在进入知流...</div>;
-  if (user.error instanceof ApiError && user.error.status === 401) return <Redirect to="/login" replace />;
-  if (user.isError) return <div className="app-loader error-text">无法连接知流服务</div>;
-
-  async function logout() {
-    await api.post<void>("/api/auth/logout");
-    navigate("/login");
-  }
+  const [location] = useLocation();
 
   return (
     <div className="app-layout">
@@ -50,15 +36,13 @@ export function AppShell() {
             </Link>
           ))}
         </nav>
-        <button className="sidebar-logout" onClick={logout} title="退出登录"><LogOut size={18} /><span>退出</span></button>
       </aside>
       <div className="main-column">
         <header className="topbar">
           <div className="mobile-brand"><Radio size={18} /><span>知流</span></div>
-          <h1>{pageNames[location] ?? "知流"}</h1>
-          <span className="user-chip">{user.data.username}</span>
+          <h1>{pageNames[location] ?? "今日情报"}</h1>
         </header>
-        <main className="page-content"><Switch><Route path="/feed" component={Feed} /><Route path="/reports" component={Reports} /><Route path="/settings" component={Subscriptions} /><Route path="/tasks" component={Tasks} /><Route path="/" component={Home} /></Switch></main>
+        <main className="page-content"><Switch><Route path="/feed" component={Feed} /><Route path="/reports" component={Reports} /><Route path="/settings" component={Subscriptions} /><Route path="/tasks" component={Tasks} /><Route path="/" component={Home} /><Route component={Home} /></Switch></main>
       </div>
       <BottomNav />
     </div>

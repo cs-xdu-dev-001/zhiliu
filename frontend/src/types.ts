@@ -10,11 +10,6 @@ export interface HermesConnection {
   version: string | null;
 }
 
-export interface User {
-  id: number;
-  username: string;
-}
-
 export interface IntelligenceItem {
   id: number;
   subscriptionId: number;
