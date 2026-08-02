@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { useSearchParams } from "wouter";
 
 import { api } from "../api";
 import { ItemCard } from "../components/ItemCard";
@@ -12,14 +13,22 @@ const categories = [
   { value: "job", label: "招聘" },
 ];
 
+const allowedKinds = new Set(categories.map((category) => category.value));
+const allowedStates = new Set(["unread", "saved", "ignored"]);
+
 export function Feed() {
-  const [kind, setKind] = useState("");
-  const [state, setState] = useState("unread");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const rawKind = searchParams.get("kind") ?? "";
+  const rawState = searchParams.get("state") ?? "unread";
+  const kind = allowedKinds.has(rawKind) ? rawKind : "";
+  const state = allowedStates.has(rawState) ? rawState : "unread";
+  const itemQuery = new URLSearchParams({ state });
+  if (kind) itemQuery.set("kind", kind);
   const [notice, setNotice] = useState<{ tone: "success" | "error"; text: string } | null>(null);
   const queryClient = useQueryClient();
   const query = useQuery({
     queryKey: ["items", kind, state],
-    queryFn: () => api.get<ItemPage>(`/api/items?state=${state}${kind ? `&kind=${kind}` : ""}`),
+    queryFn: () => api.get<ItemPage>(`/api/items?${itemQuery.toString()}`),
   });
   const update = useMutation({
     mutationFn: ({ id, patch }: { id: number; patch: Partial<IntelligenceItem> }) => api.patch(`/api/items/${id}`, patch),
@@ -36,18 +45,23 @@ export function Feed() {
     onError: () => setNotice({ tone: "error", text: "操作未完成，请重试" }),
   });
 
+  function setFilters(nextKind: string, nextState: string) {
+    const next = new URLSearchParams({ state: nextState });
+    if (nextKind) next.set("kind", nextKind);
+    setSearchParams(next, { replace: true });
+  }
+
   function clearFilters() {
-    setKind("");
-    setState("unread");
+    setFilters("", "unread");
   }
 
   return (
     <section className="stack-lg">
       <div className="filter-bar">
         <div className="segmented" aria-label="情报分类">
-          {categories.map((category) => <button key={category.value} className={kind === category.value ? "active" : ""} onClick={() => setKind(category.value)}>{category.label}</button>)}
+          {categories.map((category) => <button key={category.value} className={kind === category.value ? "active" : ""} onClick={() => setFilters(category.value, state)}>{category.label}</button>)}
         </div>
-        <select aria-label="情报状态" value={state} onChange={(event) => setState(event.target.value)}>
+        <select aria-label="情报状态" value={state} onChange={(event) => setFilters(kind, event.target.value)}>
           <option value="unread">未读</option><option value="saved">收藏</option><option value="ignored">已忽略</option>
         </select>
       </div>
