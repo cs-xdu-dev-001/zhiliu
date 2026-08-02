@@ -89,7 +89,7 @@ def test_singleton_race_replays_update(monkeypatch):
             self.calls += 1
             if self.calls == 1:
                 self.rollback()
-                self.row = HermesIntegration(id=1, base_url="https:// 경쟁", encrypted_api_key="old", api_key_hint="••••old")
+                self.row = HermesIntegration(id=1, base_url="https:// 경쟁", encrypted_api_key=SecretCipher("integration-secret-at-least-32-characters").encrypt("old"), api_key_hint="••••old")
                 raise __import__('sqlalchemy').exc.IntegrityError("x", {}, Exception())
             if self.row is None: self.row = getattr(self, 'pending', self.row)
         def refresh(self, row): pass
