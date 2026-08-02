@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.crypto import SecretCipher, SecretDecryptionError
@@ -38,6 +39,7 @@ class HermesIntegrationService:
         self._validate_url(base_url)
         api_key = payload.api_key.strip()
         record = self.get_record()
+        is_new = record is None
         if record is None:
             record = HermesIntegration(id=1, base_url=base_url)
             self.db.add(record)
@@ -48,6 +50,21 @@ class HermesIntegrationService:
             record.api_key_hint = "••••" + api_key[-4:] if len(api_key) > 4 else "••••"
         try:
             self.db.commit(); self.db.refresh(record)
+        except IntegrityError as integrity_exc:
+            if not is_new:
+                self.db.rollback(); raise
+            self.db.rollback()
+            record = self.get_record()
+            if record is None:
+                raise integrity_exc
+            record.base_url = base_url
+            if api_key:
+                record.encrypted_api_key = self.cipher.encrypt(api_key)
+                record.api_key_hint = "••••" + api_key[-4:] if len(api_key) > 4 else "••••"
+            try:
+                self.db.commit(); self.db.refresh(record)
+            except Exception:
+                self.db.rollback(); raise
         except Exception:
             self.db.rollback(); raise
         return await self.test(record)
