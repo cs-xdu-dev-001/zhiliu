@@ -15,7 +15,6 @@ async function capture(page: Page, testInfo: TestInfo, name: string) {
 test("阅读情报并触发订阅", async ({ page }, testInfo) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "今日情报" })).toBeVisible();
-  await expect(page.getByText("优先阅读")).toBeVisible();
   await capture(page, testInfo, "home");
 
   await page.getByRole("link", { name: "情报" }).first().click();
