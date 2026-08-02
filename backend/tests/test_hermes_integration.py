@@ -1,8 +1,66 @@
 import pytest
+from datetime import datetime
+from app.services import hermes_integration as integration_service
+from app.services.hermes import HermesProbe, HermesUnauthorized, HermesUnavailable, HermesError
 
 from app.core.crypto import SecretCipher
 from app.core.crypto import SecretDecryptionError
 from app.models import HermesIntegration
+
+def test_get_unconfigured_does_not_create_record(auth_client, db_session):
+    response = auth_client.get("/api/integrations/hermes")
+    assert response.status_code == 200
+    assert response.json()["status"] == "unconfigured"
+    assert response.json()["apiKeyConfigured"] is False
+    assert "apiKeyConfigured" in response.text and "apiKeyHint" in response.text
+    assert db_session.query(HermesIntegration).count() == 0
+
+def test_put_saves_and_probes(auth_client, db_session, monkeypatch):
+    calls = []
+    async def probe(self):
+        calls.append(1)
+        return HermesProbe(version="1.2.3")
+    monkeypatch.setattr(integration_service.HermesClient, "probe", probe)
+    secret = "secret-a9f2"
+    response = auth_client.put("/api/integrations/hermes", json={"baseUrl":"https://hermes.example.com", "apiKey":secret})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "connected" and body["version"] == "1.2.3"
+    assert body["apiKeyHint"] == "••••a9f2" and len(calls) == 1
+    assert secret not in response.text
+    record = db_session.query(HermesIntegration).one()
+    assert record.encrypted_api_key != secret
+    assert integration_service.HermesIntegrationService(db_session, __import__('app.core.config', fromlist=['get_settings']).get_settings()).cipher.decrypt(record.encrypted_api_key) == secret
+
+def test_empty_key_keeps_old(auth_client, db_session, monkeypatch):
+    async def probe(self): return HermesProbe(version="1")
+    monkeypatch.setattr(integration_service.HermesClient, "probe", probe)
+    auth_client.put("/api/integrations/hermes", json={"baseUrl":"https://hermes.example.com", "apiKey":"old-key"})
+    first = db_session.query(HermesIntegration).one().encrypted_api_key
+    response = auth_client.put("/api/integrations/hermes", json={"baseUrl":"https://hermes.example.com", "apiKey":""})
+    assert response.status_code == 200
+    record = db_session.query(HermesIntegration).one()
+    assert record.encrypted_api_key == first and response.json()["apiKeyHint"] == "••••-key"
+
+@pytest.mark.parametrize("url", ["ftp://hermes.example.com", "https:///missing-host"])
+def test_invalid_url(auth_client, url):
+    response = auth_client.put("/api/integrations/hermes", json={"baseUrl":url, "apiKey":"x"})
+    assert response.status_code == 422
+
+@pytest.mark.parametrize("exc,status", [(HermesUnauthorized("no"), "unauthorized"), (HermesUnavailable("down"), "unreachable"), (HermesError("bad"), "error")])
+def test_test_status_mapping(auth_client, db_session, monkeypatch, exc, status):
+    async def probe(self): raise exc
+    monkeypatch.setattr(integration_service.HermesClient, "probe", probe)
+    auth_client.put("/api/integrations/hermes", json={"baseUrl":"https://hermes.example.com", "apiKey":"key"})
+    response = auth_client.post("/api/integrations/hermes/test")
+    assert response.json()["status"] == status
+    assert db_session.query(HermesIntegration).one().last_checked_at is not None
+
+def test_test_unconfigured_skips_probe(auth_client, monkeypatch):
+    def fail(*args, **kwargs): raise AssertionError("probe called")
+    monkeypatch.setattr(integration_service.HermesClient, "probe", fail)
+    response = auth_client.post("/api/integrations/hermes/test")
+    assert response.json()["status"] == "unconfigured"
 
 
 def test_secret_cipher_round_trip():
