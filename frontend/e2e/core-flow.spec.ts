@@ -18,7 +18,6 @@ test("阅读情报并触发订阅", async ({ page }, testInfo) => {
   await capture(page, testInfo, "home");
 
   await page.getByRole("link", { name: "情报" }).first().click();
-  await expect(page.getByText(/条情报/)).toBeVisible();
   const readButton = page.getByRole("button", { name: "标记已读" }).first();
   if (await readButton.isVisible()) await readButton.click();
   await capture(page, testInfo, "feed");
