@@ -70,6 +70,14 @@ def list_items(
     return ItemPage(items=[serialize_item(record) for record in records], total=total, limit=limit, offset=offset)
 
 
+@router.get("/items/{item_id}", response_model=IntelligenceItemResponse)
+def get_item(item_id: int, db: Session = Depends(get_db)) -> IntelligenceItemResponse:
+    record = db.get(IntelligenceItem, item_id)
+    if record is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="情报不存在")
+    return serialize_item(record)
+
+
 @router.patch("/items/{item_id}", response_model=IntelligenceItemResponse)
 def update_item_state(
     item_id: int,

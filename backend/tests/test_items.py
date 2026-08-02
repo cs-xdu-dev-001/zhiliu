@@ -28,3 +28,19 @@ def test_missing_item_returns_not_found(client: TestClient) -> None:
 
     assert response.status_code == 404
 
+
+def test_get_item_detail(client: TestClient, seeded_item) -> None:
+    response = client.get(f"/api/items/{seeded_item.id}")
+
+    assert response.status_code == 200
+    assert response.json()["id"] == seeded_item.id
+    assert response.json()["title"] == "Agent框架发布新版本"
+    assert response.json()["reason"] == "影响Agent开发工作流"
+
+
+def test_missing_item_detail_returns_not_found(client: TestClient) -> None:
+    response = client.get("/api/items/999")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "情报不存在"
+
