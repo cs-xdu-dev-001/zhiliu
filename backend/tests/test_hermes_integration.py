@@ -15,4 +15,5 @@ def test_hermes_integration_defaults(db_session):
     db_session.commit()
     db_session.refresh(integration)
     assert integration.last_status == "unconfigured"
+    assert integration.last_message == "尚未配置Hermes连接"
     assert integration.encrypted_api_key is None
