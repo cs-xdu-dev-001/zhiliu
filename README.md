@@ -69,7 +69,7 @@ cp .env.example .env
 openssl rand -hex 32
 ```
 
-编辑`.env`，至少替换`INTEGRATION_SECRET_KEY`，然后启动：
+编辑`.env`，必须将`INTEGRATION_SECRET_KEY`替换为刚生成的随机值；后端会拒绝示例占位值。然后启动：
 
 ```bash
 docker compose up -d --build
@@ -77,7 +77,9 @@ docker compose ps
 docker compose logs -f backend
 ```
 
-默认在宿主机`8080`端口提供服务。建议使用宿主机现有Nginx或Caddy将域名HTTPS流量反向代理到`http://127.0.0.1:8080`，防火墙不对公网放行8080。
+默认在宿主机`8080`端口提供服务。当前Compose按Linux VPS设计，后端使用宿主机网络访问仅监听`127.0.0.1:8642`的Hermes；同时会在宿主机监听8010，因此防火墙必须同时拒绝公网访问8010和8080。建议使用宿主机现有Nginx或Caddy将域名HTTPS流量反向代理到`http://127.0.0.1:8080`。
+
+Windows或macOS的Docker Desktop只有在显式启用host networking且验证可达性后才能沿用此配置；否则应改为桥接网络，并将`HERMES_BASE_URL`设为`http://host.docker.internal:8642`，同时让Hermes只接受受控的本机/容器网段访问。不要在未验证隔离边界时把8642暴露到公网。
 
 知流没有应用登录，公网暴露前必须启用部署层IP白名单。例如Nginx：
 
@@ -89,7 +91,7 @@ location / {
 }
 ```
 
-请替换示例IP，并按现有Nginx配置正确设置`Host`、`X-Real-IP`、`X-Forwarded-For`等代理headers。Compose后端使用宿主机网络时，`127.0.0.1:8642`指向宿主机Hermes；若改为桥接网络，应将`HERMES_BASE_URL`改为`http://host.docker.internal:8642`或Hermes服务名，确保容器可达。
+请替换示例IP，并按现有Nginx配置正确设置`Host`、`X-Real-IP`、`X-Forwarded-For`等代理headers。若Nginx前还有CDN或其他反向代理，只能信任明确列出的代理地址，并用`set_real_ip_from`与`real_ip_header`恢复客户端IP；不要直接信任任意请求提供的`X-Forwarded-For`做白名单判断。Compose后端使用宿主机网络时，`127.0.0.1:8642`指向宿主机Hermes。
 
 ## 数据备份
 

@@ -19,7 +19,11 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def validate_production_secrets(self) -> "Settings":
         if self.app_env == "production":
-            if self.integration_secret_key == "development-integration-secret-key-32" or len(self.integration_secret_key) < 32:
+            placeholders = {
+                "development-integration-secret-key-32",
+                "replace-with-at-least-32-random-characters",
+            }
+            if self.integration_secret_key in placeholders or len(self.integration_secret_key) < 32:
                 raise ValueError("INTEGRATION_SECRET_KEY必须替换为至少32位的随机值")
         return self
 

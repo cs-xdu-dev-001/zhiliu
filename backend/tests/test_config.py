@@ -24,7 +24,11 @@ def test_production_accepts_explicit_secrets() -> None:
 
 @pytest.mark.parametrize(
     "integration_secret_key",
-    ["development-integration-secret-key-32", "too-short"],
+    [
+        "development-integration-secret-key-32",
+        "replace-with-at-least-32-random-characters",
+        "too-short",
+    ],
 )
 def test_production_rejects_invalid_integration_secret(integration_secret_key: str) -> None:
     with pytest.raises(ValidationError, match="INTEGRATION_SECRET_KEY"):
