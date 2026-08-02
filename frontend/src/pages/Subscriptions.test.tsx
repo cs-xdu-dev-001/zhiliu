@@ -11,7 +11,7 @@ vi.mock("../api", () => ({ api: { get, post, put, delete: remove } }));
 afterEach(cleanup);
 
 beforeEach(() => {
-  get.mockReset().mockResolvedValue([]);
+  get.mockReset().mockImplementation((url: string) => url.includes("/api/integrations/hermes") ? Promise.resolve({ baseUrl: "", apiKeyConfigured: false, apiKeyHint: null, status: "unconfigured", message: "请配置", checkedAt: null, version: null }) : Promise.resolve([]));
   post.mockReset().mockResolvedValue({});
   put.mockReset().mockResolvedValue({});
   remove.mockReset().mockResolvedValue(undefined);
