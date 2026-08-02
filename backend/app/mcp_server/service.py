@@ -5,7 +5,12 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.mcp_server.schemas import PublishPayload, PublishReceipt
+from app.mcp_server.schemas import (
+    MonitorPayload,
+    MonitorReceipt,
+    PublishPayload,
+    PublishReceipt,
+)
 from app.models import Briefing, HermesPublication, IntelligenceItem, Subscription
 from app.services.run_service import item_fingerprint, normalize_url
 
@@ -26,6 +31,27 @@ class PublicationConflict(ValueError):
 
 class PublicationFailure(RuntimeError):
     pass
+
+
+class MonitorFailure(RuntimeError):
+    pass
+
+
+def monitor_subscription_id(payload: MonitorPayload) -> int:
+    identity = {
+        "name": payload.name,
+        "kind": payload.kind,
+        "schedule": payload.schedule,
+        "prompt": payload.prompt,
+    }
+    encoded = json.dumps(
+        identity,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode()
+    value = int.from_bytes(hashlib.sha256(encoded).digest()[:8], "big") % (2**62 - 1000)
+    return -1000 - value
 
 
 def publication_hash(payload: PublishPayload) -> str:
@@ -226,4 +252,63 @@ class PublicationService:
             briefing_id=publication.briefing_id,
             created_at=publication.created_at,
             duplicate=duplicate,
+        )
+
+
+class MonitorService:
+    def __init__(self, db: Session) -> None:
+        self.db = db
+
+    def create(self, payload: MonitorPayload) -> MonitorReceipt:
+        keywords_json = json.dumps(payload.keywords, ensure_ascii=False)
+        subscription_id = monitor_subscription_id(payload)
+        try:
+            existing = self.db.scalar(
+                select(Subscription).where(
+                    Subscription.name == payload.name,
+                    Subscription.kind == payload.kind,
+                    Subscription.schedule == payload.schedule,
+                    Subscription.prompt == payload.prompt,
+                )
+            )
+            if existing is not None:
+                existing.keywords_json = keywords_json
+                existing.enabled = True
+                self.db.commit()
+                return MonitorReceipt(subscription_id=existing.id, created=False)
+
+            record = Subscription(
+                id=subscription_id,
+                name=payload.name,
+                kind=payload.kind,
+                keywords_json=keywords_json,
+                schedule=payload.schedule,
+                prompt=payload.prompt,
+                enabled=True,
+            )
+            self.db.add(record)
+            self.db.flush()
+            receipt = MonitorReceipt(subscription_id=record.id, created=True)
+            self.db.commit()
+            return receipt
+        except IntegrityError:
+            self.db.rollback()
+            try:
+                existing = self.db.get(Subscription, subscription_id)
+                if existing is not None and self._matches(existing, payload):
+                    return MonitorReceipt(subscription_id=existing.id, created=False)
+            except Exception:
+                self.db.rollback()
+            raise MonitorFailure("监测创建失败，未写入知流") from None
+        except Exception:
+            self.db.rollback()
+            raise MonitorFailure("监测创建失败，未写入知流") from None
+
+    @staticmethod
+    def _matches(record: Subscription, payload: MonitorPayload) -> bool:
+        return (
+            record.name == payload.name
+            and record.kind == payload.kind
+            and record.schedule == payload.schedule
+            and record.prompt == payload.prompt
         )
