@@ -12,7 +12,7 @@ beforeEach(() => {
     items: [{
       id: 1,
       subscriptionId: 1,
-      title: "今日AI热点简报",
+      title: "微信整理 · 今日AI热点简报",
       kind: "news",
       content: "这是最新简报正文。",
       itemCount: 3,
@@ -32,5 +32,6 @@ it("加载后直接展示最新简报", async () => {
   );
 
   expect(await screen.findByText("这是最新简报正文。")).toBeVisible();
+  expect(screen.getAllByText("微信整理 · 今日AI热点简报")).toHaveLength(2);
   expect(screen.queryByText("选择一份报告阅读")).not.toBeInTheDocument();
 });

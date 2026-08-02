@@ -7,24 +7,36 @@ from mcp.client.streamable_http import streamable_http_client
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app import main as main_module
 from app.core.config import Settings
+from app.db import get_db
 from app.main import create_app
 from app.models import IntelligenceItem, Subscription
 
 
 @pytest.mark.asyncio
-async def test_official_client_discovers_and_calls_zhiliu_tools(db_session: Session) -> None:
+async def test_official_client_discovers_and_calls_zhiliu_tools(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     token = "test-mcp-token-that-is-at-least-32-characters"
     settings = Settings(
         scheduler_enabled=False,
         zhiliu_mcp_token=token,
         _env_file=None,
     )
+    monkeypatch.setattr(main_module, "engine", db_session.bind)
+    monkeypatch.setattr(main_module, "SessionLocal", lambda: nullcontext(db_session))
     app = create_app(
         start_background_scheduler=False,
         settings=settings,
         mcp_session_factory=lambda: nullcontext(db_session),
     )
+
+    def override_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_db
     transport = httpx.ASGITransport(app=app)
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -66,6 +78,14 @@ async def test_official_client_discovers_and_calls_zhiliu_tools(db_session: Sess
                         },
                     )
                     assert result.isError is False
+
+            items_response = await http_client.get("/api/items")
+
+    assert items_response.status_code == 200
+    published_item = next(
+        item for item in items_response.json()["items"] if item["title"] == "MCP联通"
+    )
+    assert published_item["source"] == "Example · 微信Hermes"
 
     assert (
         db_session.scalar(

@@ -27,3 +27,9 @@ it("用优先级语义解释重要性并明确已读状态", () => {
   expect(screen.getByText("高优先级")).toHaveAccessibleName("高优先级，重要性90分");
   expect(screen.getByText("已读")).toBeVisible();
 });
+
+it("展示微信Hermes组合来源", () => {
+  render(<ItemCard item={{ ...item, source: "arXiv · 微信Hermes" }} />);
+
+  expect(screen.getByText("arXiv · 微信Hermes")).toBeVisible();
+});
