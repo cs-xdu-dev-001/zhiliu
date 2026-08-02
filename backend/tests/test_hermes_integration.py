@@ -6,6 +6,7 @@ from app.services.hermes import HermesProbe, HermesUnauthorized, HermesUnavailab
 from app.core.crypto import SecretCipher
 from app.core.crypto import SecretDecryptionError
 from app.models import HermesIntegration
+from app.schemas import HermesConnectionUpdate
 
 def test_get_unconfigured_does_not_create_record(auth_client, db_session):
     response = auth_client.get("/api/integrations/hermes")
@@ -78,6 +79,28 @@ def test_test_unconfigured_skips_probe(auth_client, monkeypatch):
     monkeypatch.setattr(integration_service.HermesClient, "probe", fail)
     response = auth_client.post("/api/integrations/hermes/test")
     assert response.json()["status"] == "unconfigured"
+
+def test_singleton_race_replays_update(monkeypatch):
+    class FakeDB:
+        def __init__(self): self.row = None; self.calls = 0
+        def scalar(self, _): return self.row
+        def add(self, row): self.pending = row
+        def commit(self):
+            self.calls += 1
+            if self.calls == 1:
+                self.rollback()
+                self.row = HermesIntegration(id=1, base_url="https:// 경쟁", encrypted_api_key="old", api_key_hint="••••old")
+                raise __import__('sqlalchemy').exc.IntegrityError("x", {}, Exception())
+            if self.row is None: self.row = getattr(self, 'pending', self.row)
+        def refresh(self, row): pass
+        def rollback(self): pass
+    class Settings: integration_secret_key="integration-secret-at-least-32-characters"; hermes_timeout_seconds=1
+    db = FakeDB()
+    async def probe(self): return HermesProbe(version="r")
+    monkeypatch.setattr(integration_service.HermesClient, "probe", probe)
+    result = __import__('asyncio').run(integration_service.HermesIntegrationService(db, Settings()).save_and_test(HermesConnectionUpdate(base_url="https://winner", api_key="")))
+    assert db.row.base_url == "https://winner" and db.row.encrypted_api_key == "old"
+    assert result.status == "connected"
 
 
 def test_secret_cipher_round_trip():
