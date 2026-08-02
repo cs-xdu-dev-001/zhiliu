@@ -18,6 +18,27 @@ class HermesIntegrationService:
     def get_record(self):
         return self.db.scalar(select(HermesIntegration).where(HermesIntegration.id == 1))
 
+    def resolve_client(self, subscription, demo_client_factory):
+        """Resolve the Hermes client for a task using managed, then environment config."""
+        record = self.get_record()
+        if record is not None and record.encrypted_api_key:
+            # Deliberately let SecretDecryptionError propagate for corrupt managed config.
+            key = self.cipher.decrypt(record.encrypted_api_key)
+            return HermesClient(
+                base_url=record.base_url,
+                api_key=key,
+                timeout_seconds=self.settings.hermes_timeout_seconds,
+            )
+        if self.settings.hermes_api_key:
+            return HermesClient(
+                base_url=self.settings.hermes_base_url,
+                api_key=self.settings.hermes_api_key,
+                timeout_seconds=self.settings.hermes_timeout_seconds,
+            )
+        if self.settings.demo_mode:
+            return demo_client_factory(subscription)
+        raise HermesUnavailable("尚未配置Hermes连接")
+
     def response(self, record=None) -> HermesConnectionResponse:
         record = record or self.get_record()
         if record is None:

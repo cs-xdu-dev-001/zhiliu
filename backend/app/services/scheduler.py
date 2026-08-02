@@ -8,7 +8,8 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.db import SessionLocal
 from app.models import Subscription, TaskRun
-from app.services.hermes import HermesBriefing, HermesClient, HermesItem, HermesResult
+from app.services.hermes import HermesBriefing, HermesItem, HermesResult
+from app.services.hermes_integration import HermesIntegrationService
 from app.services.run_service import RunService
 
 _scheduler: AsyncIOScheduler | None = None
@@ -83,14 +84,7 @@ async def process_queued_tasks() -> None:
             task = db.get(TaskRun, task_id)
             if task is None or task.status != "queued":
                 continue
-            if settings.demo_mode and not settings.hermes_api_key:
-                client = DemoHermesClient(task.subscription)
-            else:
-                client = HermesClient(
-                    base_url=settings.hermes_base_url,
-                    api_key=settings.hermes_api_key,
-                    timeout_seconds=settings.hermes_timeout_seconds,
-                )
+            client = HermesIntegrationService(db, settings).resolve_client(task.subscription, DemoHermesClient)
             await RunService(db, client).execute_task(task.id)
 
 
