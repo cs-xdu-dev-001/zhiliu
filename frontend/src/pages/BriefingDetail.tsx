@@ -28,7 +28,7 @@ export function BriefingDetail() {
   });
   const backHref = safeBackHref(searchParams.get("from"));
 
-  if (query.isPending) return <div className="detail-skeleton" aria-label="正在加载报告" />;
+  if (query.isPending) return <div className="detail-skeleton" role="status" aria-label="正在加载报告" />;
   if (query.error instanceof ApiError && query.error.status === 404) {
     return <div className="empty-state"><p>报告不存在或已删除</p><Link className="secondary-link" href={backHref}>返回报告列表</Link></div>;
   }

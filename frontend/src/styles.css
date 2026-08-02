@@ -187,8 +187,6 @@ button:disabled { cursor: wait; }
   .page-content { padding: 24px 28px 44px; }
   .metric-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .metric { min-height: 88px; }
-  .report-layout { grid-template-columns: minmax(270px, 34%) minmax(0, 1fr); align-items: start; }
-  .report-detail { position: sticky; top: 92px; min-height: 420px; }
   .dialog-backdrop { align-items: center; justify-content: center; padding: 24px; }
   .dialog-panel { max-width: 580px; border-radius: 8px; padding: 22px; }
 }

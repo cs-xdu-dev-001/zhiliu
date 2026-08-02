@@ -53,3 +53,10 @@ it("拒绝跨站返回地址", async () => {
 
   expect(await screen.findByRole("link", { name: "返回报告列表" })).toHaveAttribute("href", "/reports");
 });
+
+it("加载时向辅助技术说明状态", () => {
+  get.mockReturnValue(new Promise(() => undefined));
+  renderPage();
+
+  expect(screen.getByRole("status", { name: "正在加载报告" })).toBeVisible();
+});

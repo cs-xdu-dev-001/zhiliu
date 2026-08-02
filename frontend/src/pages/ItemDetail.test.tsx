@@ -70,3 +70,10 @@ it("拒绝反斜杠伪装的外部返回地址", async () => {
 
   expect(await screen.findByRole("link", { name: "返回情报列表" })).toHaveAttribute("href", "/feed");
 });
+
+it("加载时向辅助技术说明状态", () => {
+  get.mockReturnValue(new Promise(() => undefined));
+  renderPage();
+
+  expect(screen.getByRole("status", { name: "正在加载情报" })).toBeVisible();
+});
