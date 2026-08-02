@@ -16,6 +16,7 @@ def test_production_accepts_explicit_secrets() -> None:
     settings = Settings(
         app_env="production",
         integration_secret_key="production-integration-secret-that-is-long-enough",
+        zhiliu_mcp_token="production-mcp-token-that-is-long-enough",
         _env_file=None,
     )
 
@@ -35,6 +36,36 @@ def test_production_rejects_invalid_integration_secret(integration_secret_key: s
         Settings(
             app_env="production",
             integration_secret_key=integration_secret_key,
+            _env_file=None,
+        )
+
+
+@pytest.mark.parametrize(
+    "zhiliu_mcp_token",
+    [
+        "",
+        "development-zhiliu-mcp-token-change-me",
+        "replace-with-separate-32-character-random-token",
+        "too-short",
+    ],
+)
+def test_production_rejects_invalid_mcp_token(zhiliu_mcp_token: str) -> None:
+    with pytest.raises(ValidationError, match="ZHILIU_MCP_TOKEN"):
+        Settings(
+            app_env="production",
+            integration_secret_key="production-integration-secret-that-is-long-enough",
+            zhiliu_mcp_token=zhiliu_mcp_token,
+            _env_file=None,
+        )
+
+
+def test_production_rejects_reused_integration_secret() -> None:
+    reused_secret = "production-shared-secret-that-is-long-enough"
+    with pytest.raises(ValidationError, match="ZHILIU_MCP_TOKEN"):
+        Settings(
+            app_env="production",
+            integration_secret_key=reused_secret,
+            zhiliu_mcp_token=reused_secret,
             _env_file=None,
         )
 
