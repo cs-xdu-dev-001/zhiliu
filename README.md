@@ -31,7 +31,7 @@ npm install
 npm run dev
 ```
 
-访问`http://127.0.0.1:5173`，演示账号为`admin / demo-password`。
+访问`http://127.0.0.1:5173`。知流没有应用登录；请仅在受部署层保护的网络中访问。
 
 ## 配置Hermes
 
@@ -51,6 +51,8 @@ curl http://127.0.0.1:8642/health
 
 Hermes必须只监听`127.0.0.1:8642`，不要把8642端口开放到公网。知流后端在Linux VPS上使用宿主机网络，因此可以安全访问这个本地端口。
 
+在知流UI进入“订阅与任务→Hermes连接”，填写Hermes地址和API密钥后保存并测试。测试先以无认证GET `/health`证明网络可达，再以Bearer认证GET `/v1/capabilities`证明授权有效；只有提交任务并看到非空`hermesRunId`及新增情报，才算端到端验证成功。`HERMES_API_KEY`仅用于旧部署迁移fallback，新部署应从UI配置。
+
 ## VPS部署
 
 ```bash
@@ -61,13 +63,13 @@ cd /opt/zhiliu
 cp .env.example .env
 ```
 
-生成JWT密钥：
+生成集成密钥：
 
 ```bash
 openssl rand -hex 32
 ```
 
-编辑`.env`，至少替换`JWT_SECRET`、`ADMIN_PASSWORD`和`HERMES_API_KEY`，然后启动：
+编辑`.env`，至少替换`INTEGRATION_SECRET_KEY`，然后启动：
 
 ```bash
 docker compose up -d --build
@@ -76,6 +78,18 @@ docker compose logs -f backend
 ```
 
 默认在宿主机`8080`端口提供服务。建议使用宿主机现有Nginx或Caddy将域名HTTPS流量反向代理到`http://127.0.0.1:8080`，防火墙不对公网放行8080。
+
+知流没有应用登录，公网暴露前必须启用部署层IP白名单。例如Nginx：
+
+```nginx
+location / {
+    allow 203.0.113.10;
+    deny all;
+    proxy_pass http://127.0.0.1:8080;
+}
+```
+
+请替换示例IP，并按现有Nginx配置正确设置`Host`、`X-Real-IP`、`X-Forwarded-For`等代理headers。Compose后端使用宿主机网络时，`127.0.0.1:8642`指向宿主机Hermes；若改为桥接网络，应将`HERMES_BASE_URL`改为`http://host.docker.internal:8642`或Hermes服务名，确保容器可达。
 
 ## 数据备份
 

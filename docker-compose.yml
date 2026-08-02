@@ -8,7 +8,12 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: sqlite:////data/zhiliu.db
+      INTEGRATION_SECRET_KEY: ${INTEGRATION_SECRET_KEY:-replace-with-at-least-32-random-characters}
       HERMES_BASE_URL: ${HERMES_BASE_URL:-http://127.0.0.1:8642}
+      HERMES_API_KEY: ${HERMES_API_KEY:-}
+      HERMES_TIMEOUT_SECONDS: ${HERMES_TIMEOUT_SECONDS:-180}
+      DEMO_MODE: ${DEMO_MODE:-false}
+      SCHEDULER_ENABLED: ${SCHEDULER_ENABLED:-true}
     volumes:
       - zhiliu-data:/data
     network_mode: host
