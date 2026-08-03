@@ -138,3 +138,15 @@ test("维护情报并保留修改记录", async ({ page }, testInfo) => {
   await expect(page.getByRole("dialog", { name: "合并重复情报" })).toBeVisible();
   await capture(page, testInfo, "item-merge-dialog");
 });
+
+test("网络中断后提示并自动恢复", async ({ page, context }, testInfo) => {
+  await page.goto("/");
+  await context.setOffline(true);
+  await page.evaluate(() => window.dispatchEvent(new Event("offline")));
+  await expect(page.getByRole("alert")).toContainText("网络已断开");
+  await capture(page, testInfo, "offline-status", false);
+
+  await context.setOffline(false);
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  await expect(page.getByRole("status")).toContainText("连接已恢复");
+});

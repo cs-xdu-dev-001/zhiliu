@@ -5,6 +5,7 @@ import { Link, useParams, useSearchParams } from "wouter";
 
 import { api, ApiError } from "../api";
 import type { IntelligenceItem, IntelligenceItemDetail, IntelligenceKind, ItemRevision, MergeCandidate } from "../types";
+import { useModalDialog } from "../useModalDialog";
 
 const kindLabels = { news: "热点", paper: "论文", job: "招聘" };
 const revisionLabels: Record<ItemRevision["action"], string> = {
@@ -29,6 +30,15 @@ function safeBackHref(value: string | null) {
 
 function errorText(error: unknown) {
   return error instanceof ApiError ? error.message : "操作未完成，请重试";
+}
+
+function safeExternalUrl(value: string) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:" ? value : null;
+  } catch {
+    return null;
+  }
 }
 
 function revisionChanges(revision: ItemRevision) {
@@ -106,6 +116,8 @@ export function ItemDetail() {
     mutationFn: (subscriptionId: number) => api.post(`/api/subscriptions/${subscriptionId}/run`),
     onSuccess: () => setNotice({ tone: "success", text: "已交给Hermes重新整理，可在任务记录查看进度" }),
   });
+  const { dialogRef: editDialogRef, rememberTrigger: rememberEditTrigger } = useModalDialog<HTMLElement>(editOpen, () => setEditOpen(false), edit.isPending);
+  const { dialogRef: mergeDialogRef, rememberTrigger: rememberMergeTrigger } = useModalDialog<HTMLElement>(mergeOpen, () => setMergeOpen(false), merge.isPending);
   const backHref = safeBackHref(searchParams.get("from"));
 
   if (query.isPending) return <div className="detail-skeleton" role="status" aria-label="正在加载情报" />;
@@ -119,8 +131,10 @@ export function ItemDetail() {
   const merged = item.mergedIntoId !== null;
   const subscriptionOrigin = item.publications.some((publication) => publication.origin === "subscription-hermes");
   const busy = update.isPending || edit.isPending || validity.isPending || merge.isPending || rerun.isPending;
+  const sourceUrl = safeExternalUrl(item.url);
 
-  function openEditor() {
+  function openEditor(trigger: HTMLElement) {
+    rememberEditTrigger(trigger);
     setForm({ title: item.title, summary: item.summary, kind: item.kind });
     edit.reset();
     setEditOpen(true);
@@ -161,9 +175,9 @@ export function ItemDetail() {
       <section className="maintenance-section" aria-labelledby="maintenance-heading">
         <div className="lineage-heading"><Pencil size={19} /><h2 id="maintenance-heading">内容维护</h2></div>
         <div className="maintenance-actions">
-          <button disabled={busy || merged} onClick={openEditor}><Pencil size={17} />编辑内容</button>
+          <button disabled={busy || merged} onClick={(event) => openEditor(event.currentTarget)}><Pencil size={17} />编辑内容</button>
           <button disabled={busy || merged} onClick={() => validity.mutate(!item.isInvalid)}><CircleX size={17} />{item.isInvalid ? "恢复有效" : "标记无效"}</button>
-          <button disabled={busy || merged} onClick={() => { setMergeTargetId(null); merge.reset(); setMergeOpen(true); }}><Merge size={17} />合并重复</button>
+          <button disabled={busy || merged} onClick={(event) => { rememberMergeTrigger(event.currentTarget); setMergeTargetId(null); merge.reset(); setMergeOpen(true); }}><Merge size={17} />合并重复</button>
           {subscriptionOrigin && item.subscriptionId > 0 && <button disabled={busy || merged} onClick={() => rerun.mutate(item.subscriptionId)}><RefreshCw size={17} />重新整理</button>}
         </div>
         {!subscriptionOrigin && !merged && <p className="maintenance-guidance">微信Hermes内容需回到微信重新发起，避免知流重复调用Hermes。</p>}
@@ -217,28 +231,30 @@ export function ItemDetail() {
         <button disabled={busy || merged} onClick={() => update.mutate({ isSaved: !item.isSaved })}><Bookmark size={17} fill={item.isSaved ? "currentColor" : "none"} />{item.isSaved ? "取消收藏" : "收藏"}</button>
         <button disabled={busy || merged} onClick={() => update.mutate({ isRead: !item.isRead })}><Check size={17} />{item.isRead ? "标记未读" : "标记已读"}</button>
         <button disabled={busy || merged} onClick={() => update.mutate({ isIgnored: true })}><CircleX size={17} />忽略</button>
-        <a className="primary-compact" href={item.url} target="_blank" rel="noreferrer"><ExternalLink size={17} />打开原文（新窗口）</a>
+        {sourceUrl
+          ? <a className="primary-compact" href={sourceUrl} target="_blank" rel="noreferrer"><ExternalLink size={17} />打开原文（新窗口）</a>
+          : <span className="source-unavailable">原文链接不可用</span>}
       </div>
 
       {editOpen && (
-        <div className="dialog-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setEditOpen(false)}>
-          <section className="dialog-panel" role="dialog" aria-modal="true" aria-labelledby="edit-dialog-title" onKeyDown={(event) => event.key === "Escape" && setEditOpen(false)}>
-            <div className="dialog-heading"><h2 id="edit-dialog-title">编辑情报</h2><button className="icon-button" aria-label="关闭" onClick={() => setEditOpen(false)}><X size={20} /></button></div>
+        <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && !edit.isPending && setEditOpen(false)}>
+          <section ref={editDialogRef} className="dialog-panel" role="dialog" aria-modal="true" aria-labelledby="edit-dialog-title">
+            <div className="dialog-heading"><h2 id="edit-dialog-title">编辑情报</h2><button className="icon-button" aria-label="关闭" disabled={edit.isPending} onClick={() => setEditOpen(false)}><X size={20} /></button></div>
             <form className="correction-form" onSubmit={submitEdit}>
               <label className="form-field"><span>标题</span><input autoFocus required maxLength={300} value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} /></label>
               <label className="form-field"><span>摘要</span><textarea required maxLength={5000} rows={7} value={form.summary} onChange={(event) => setForm({ ...form, summary: event.target.value })} /></label>
               <label className="form-field"><span>分类</span><select value={form.kind} onChange={(event) => setForm({ ...form, kind: event.target.value as IntelligenceKind })}><option value="news">热点</option><option value="paper">论文</option><option value="job">招聘</option></select></label>
               {edit.isError && <div className="action-notice error" role="alert">{errorText(edit.error)}</div>}
-              <div className="dialog-actions"><button type="button" className="secondary-button" onClick={() => setEditOpen(false)}>取消</button><button className="primary-button" disabled={edit.isPending}>{edit.isPending ? "正在保存" : "保存修改"}</button></div>
+              <div className="dialog-actions"><button type="button" className="secondary-button" disabled={edit.isPending} onClick={() => setEditOpen(false)}>取消</button><button className="primary-button" disabled={edit.isPending}>{edit.isPending ? "正在保存" : "保存修改"}</button></div>
             </form>
           </section>
         </div>
       )}
 
       {mergeOpen && (
-        <div className="dialog-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setMergeOpen(false)}>
-          <section className="dialog-panel" role="dialog" aria-modal="true" aria-labelledby="merge-dialog-title" onKeyDown={(event) => event.key === "Escape" && setMergeOpen(false)}>
-            <div className="dialog-heading"><h2 id="merge-dialog-title">合并重复情报</h2><button className="icon-button" aria-label="关闭" onClick={() => setMergeOpen(false)}><X size={20} /></button></div>
+        <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && !merge.isPending && setMergeOpen(false)}>
+          <section ref={mergeDialogRef} className="dialog-panel" role="dialog" aria-modal="true" aria-labelledby="merge-dialog-title">
+            <div className="dialog-heading"><h2 id="merge-dialog-title">合并重复情报</h2><button className="icon-button" aria-label="关闭" disabled={merge.isPending} onClick={() => setMergeOpen(false)}><X size={20} /></button></div>
             <p className="merge-guidance">选择要保留的情报。当前记录仍用于审计，报告和写入链路会转移到保留项。</p>
             {candidates.isPending && <div className="list-skeleton"><i /><i /></div>}
             {candidates.isError && <div className="inline-error" role="alert">候选情报加载失败。<button onClick={() => candidates.refetch()}>重新加载</button></div>}
@@ -252,7 +268,7 @@ export function ItemDetail() {
               ))}
             </div>
             {merge.isError && <div className="action-notice error" role="alert">{errorText(merge.error)}</div>}
-            <div className="dialog-actions"><button className="secondary-button" onClick={() => setMergeOpen(false)}>取消</button><button className="primary-button" disabled={!mergeTargetId || merge.isPending} onClick={() => mergeTargetId && merge.mutate(mergeTargetId)}>{merge.isPending ? "正在合并" : "确认合并"}</button></div>
+            <div className="dialog-actions"><button className="secondary-button" disabled={merge.isPending} onClick={() => setMergeOpen(false)}>取消</button><button className="primary-button" disabled={!mergeTargetId || merge.isPending} onClick={() => mergeTargetId && merge.mutate(mergeTargetId)}>{merge.isPending ? "正在合并" : "确认合并"}</button></div>
           </section>
         </div>
       )}

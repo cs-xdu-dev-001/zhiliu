@@ -86,10 +86,14 @@ it("按Escape关闭订阅对话框", async () => {
   );
 
   await screen.findByText("还没有订阅");
-  await userEvent.click(screen.getByRole("button", { name: "新建订阅" }));
+  const trigger = screen.getByRole("button", { name: "新建订阅" });
+  await userEvent.click(trigger);
+  expect(document.body.style.overflow).toBe("hidden");
   await userEvent.keyboard("{Escape}");
 
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(document.body.style.overflow).toBe("");
+  expect(trigger).toHaveFocus();
 });
 
 it("立即执行后宣布任务已提交", async () => {

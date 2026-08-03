@@ -13,7 +13,7 @@ export function BottomNav() {
   return (
     <nav className="bottom-nav" aria-label="主导航">
       {entries.map(({ to, label, icon: Icon, end }) => (
-        <Link key={to} href={to} className={(end ? location === to : location.startsWith(to)) ? "active" : ""}>
+        <Link key={to} href={to} aria-current={(end ? location === to : location.startsWith(to)) ? "page" : undefined} className={(end ? location === to : location.startsWith(to)) ? "active" : ""}>
           <Icon size={20} />
           <span>{label}</span>
         </Link>

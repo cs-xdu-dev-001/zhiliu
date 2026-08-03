@@ -61,7 +61,8 @@ it("第二页使用稳定的服务端分页参数", async () => {
   expect(get).toHaveBeenCalledWith("/api/runs?limit=20&offset=20");
   expect(screen.getByText("第2/2页")).toBeVisible();
   expect(screen.getByRole("link", { name: /上一页/ })).toHaveAttribute("href", "/tasks");
-  expect(screen.getByRole("link", { name: /下一页/ })).toHaveAttribute("aria-disabled", "true");
+  expect(screen.queryByRole("link", { name: /下一页/ })).not.toBeInTheDocument();
+  expect(screen.getByText("下一页")).toHaveClass("disabled");
 });
 
 it("加载失败时提供重新加载", async () => {

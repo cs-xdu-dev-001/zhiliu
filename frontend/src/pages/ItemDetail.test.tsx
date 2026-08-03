@@ -159,3 +159,23 @@ it("加载时向辅助技术说明状态", () => {
 
   expect(screen.getByRole("status", { name: "正在加载情报" })).toBeVisible();
 });
+
+it("拒绝不安全的原文链接", async () => {
+  get.mockResolvedValue({ ...item, url: "javascript:alert(1)" });
+  renderPage();
+
+  expect(await screen.findByText("原文链接不可用")).toBeVisible();
+  expect(screen.queryByRole("link", { name: /打开原文/ })).not.toBeInTheDocument();
+});
+
+it("编辑弹窗关闭后恢复焦点并解锁页面", async () => {
+  renderPage();
+  const trigger = await screen.findByRole("button", { name: "编辑内容" });
+  await userEvent.click(trigger);
+  expect(document.body.style.overflow).toBe("hidden");
+  await userEvent.keyboard("{Escape}");
+
+  expect(screen.queryByRole("dialog", { name: "编辑情报" })).not.toBeInTheDocument();
+  expect(document.body.style.overflow).toBe("");
+  expect(trigger).toHaveFocus();
+});

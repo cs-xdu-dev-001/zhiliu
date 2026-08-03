@@ -162,7 +162,7 @@ export function Feed() {
       </div>
       <div className="filter-bar">
         <div className="segmented" aria-label="情报分类">
-          {categories.map((category) => <button key={category.value} className={kind === category.value ? "active" : ""} onClick={() => setView({ kind: category.value, page: 1 })}>{category.label}</button>)}
+          {categories.map((category) => <button key={category.value} aria-pressed={kind === category.value} className={kind === category.value ? "active" : ""} onClick={() => setView({ kind: category.value, page: 1 })}>{category.label}</button>)}
         </div>
         <select aria-label="情报状态" value={state} onChange={(event) => setView({ state: event.target.value, page: 1 })}>
           <option value="unread">未读</option><option value="saved">收藏</option><option value="ignored">已忽略</option><option value="invalid">无效</option>
@@ -170,7 +170,7 @@ export function Feed() {
       </div>
       <div className="feed-list-heading">
         <div className="section-count">{query.data ? `${query.data.total}条情报` : "正在同步"}{q ? ` · 搜索“${q}”` : ""}</div>
-        <button className={`selection-toggle ${selectMode ? "active" : ""}`} onClick={() => { setSelectMode(!selectMode); setSelected(new Set()); setConfirmAction(null); }}><ListChecks size={17} />{selectMode ? "退出批量" : "批量选择"}</button>
+        <button aria-pressed={selectMode} className={`selection-toggle ${selectMode ? "active" : ""}`} onClick={() => { setSelectMode(!selectMode); setSelected(new Set()); setConfirmAction(null); }}><ListChecks size={17} />{selectMode ? "退出批量" : "批量选择"}</button>
       </div>
       {selectMode && (
         <div className="bulk-toolbar" aria-label="批量操作">

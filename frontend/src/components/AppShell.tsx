@@ -11,6 +11,7 @@ import { Tasks } from "../pages/Tasks";
 import { TaskDetail } from "../pages/TaskDetail";
 import { TraceDetail } from "../pages/TraceDetail";
 import { BottomNav } from "./BottomNav";
+import { ServiceStatus } from "./ServiceStatus";
 
 const pageNames: Record<string, string> = {
   "/": "今日情报",
@@ -70,7 +71,7 @@ export function AppShell() {
         <div className="sidebar-brand"><Radio size={20} /><strong>知流</strong></div>
         <nav aria-label="桌面导航">
           {desktopNav.map(({ to, label, icon: Icon, end }) => (
-            <Link key={to} href={to} className={(end ? pathname === to : pathname.startsWith(to)) || (to === "/settings" && pathname.startsWith("/tasks")) ? "active" : ""}>
+            <Link key={to} href={to} aria-current={(end ? pathname === to : pathname.startsWith(to)) || (to === "/settings" && pathname.startsWith("/tasks")) ? "page" : undefined} className={(end ? pathname === to : pathname.startsWith(to)) || (to === "/settings" && pathname.startsWith("/tasks")) ? "active" : ""}>
               <Icon size={18} /><span>{label}</span>
             </Link>
           ))}
@@ -83,6 +84,7 @@ export function AppShell() {
             : <div className="mobile-brand"><Radio size={18} /><span>知流</span></div>}
           <h1>{title}</h1>
         </header>
+        <ServiceStatus />
         <main id="main-content" tabIndex={-1} className="page-content"><Switch><Route path="/items/:id" component={ItemDetail} /><Route path="/reports/:id" component={BriefingDetail} /><Route path="/traces/:id" component={TraceDetail} /><Route path="/tasks/:id" component={TaskDetail} /><Route path="/feed" component={Feed} /><Route path="/reports" component={Reports} /><Route path="/settings" component={Subscriptions} /><Route path="/tasks" component={Tasks} /><Route path="/" component={Home} /><Route component={Home} /></Switch></main>
       </div>
       {!hidesBottomNav && <BottomNav />}
