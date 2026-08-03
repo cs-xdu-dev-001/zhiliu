@@ -22,9 +22,11 @@ test("直接显示应用，即使地址为/login", () => {
 });
 
 test("情报详情路由显示正确顶栏标题", () => {
-  renderApp("/items/1");
+  renderApp("/items/1?from=%2Ffeed%3Fstate%3Dunread");
   expect(screen.getByRole("heading", { name: "情报详情" })).toBeVisible();
   expect(screen.getByText("情报详情内容")).toBeVisible();
+  expect(screen.getByRole("link", { name: "返回上一列表" })).toHaveAttribute("href", "/feed?state=unread");
+  expect(document.title).toBe("情报详情 · 知流");
 });
 
 test("报告详情路由显示正确顶栏标题", () => {
@@ -36,4 +38,21 @@ test("报告详情路由显示正确顶栏标题", () => {
 test.each(["/items/1", "/reports/1", "/traces/1"])("详情页隐藏会覆盖内容的手机底部导航：%s", (path) => {
   renderApp(path);
   expect(screen.queryByRole("navigation", { name: "主导航" })).not.toBeInTheDocument();
+});
+
+test("筛选参数不影响顶栏和页签标题", () => {
+  renderApp("/feed?state=saved&q=Agent");
+  expect(screen.getByRole("heading", { name: "情报流" })).toBeVisible();
+  expect(document.title).toBe("情报流 · 知流");
+});
+
+test("详情页拒绝跨站返回地址", () => {
+  renderApp("/reports/1?from=https%3A%2F%2Fevil.example");
+  expect(screen.getByRole("link", { name: "返回上一列表" })).toHaveAttribute("href", "/reports");
+});
+
+test("提供键盘跳转正文入口", () => {
+  renderApp("/");
+  expect(screen.getByRole("link", { name: "跳到主要内容" })).toHaveAttribute("href", "#main-content");
+  expect(document.querySelector("main")).toHaveAttribute("id", "main-content");
 });

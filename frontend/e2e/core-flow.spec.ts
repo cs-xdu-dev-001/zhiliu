@@ -27,6 +27,7 @@ test("阅读情报并触发订阅", async ({ page }, testInfo) => {
   const search = page.getByRole("searchbox", { name: "搜索情报" });
   await search.fill("RAG");
   await expect(page).toHaveURL(/q=RAG/);
+  await expect(page).toHaveTitle("情报流 · 知流");
   await expect(page.getByRole("heading", { name: "开源RAG评测工具发布新版本" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "代码Agent开始强调仓库级上下文" })).toBeHidden();
   await capture(page, testInfo, "feed-search", false);
@@ -81,7 +82,7 @@ test("阅读情报并触发订阅", async ({ page }, testInfo) => {
   await expect(page.getByRole("heading", { name: /E2E测试订阅/ })).toBeVisible();
   await expect(page.getByRole("heading", { name: "当前阶段" })).toBeVisible();
   await capture(page, testInfo, "task-detail");
-  await page.getByRole("link", { name: "返回任务记录" }).click();
+  await page.getByRole("link", { name: "返回上一列表" }).click();
   await page.getByRole("link", { name: /AI工程岗位/ }).click();
   await expect(page.getByRole("link", { name: "检查订阅与Hermes连接" })).toBeVisible();
   await capture(page, testInfo, "task-detail-failed");
@@ -91,6 +92,8 @@ test("报告来源可以追溯到Hermes处理链路", async ({ page, context }, 
   await page.goto("/reports");
   await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: new URL(page.url()).origin });
   await page.getByRole("link", { name: /AI热点日报/ }).click();
+  await expect(page).toHaveTitle("报告详情 · 知流");
+  await expect(page.getByRole("link", { name: "返回上一列表" })).toHaveAttribute("href", "/reports");
   await expect(page.getByRole("heading", { name: "来源情报" })).toBeVisible();
   await expect(page.getByRole("link", { name: "查看生成链路" })).toBeVisible();
   await page.getByRole("button", { name: "复制摘要" }).click();

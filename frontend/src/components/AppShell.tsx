@@ -1,4 +1,5 @@
-import { BookOpenText, House, ListFilter, Radio, Settings2 } from "lucide-react";
+import { ArrowLeft, BookOpenText, House, ListFilter, Radio, Settings2 } from "lucide-react";
+import { useEffect } from "react";
 import { Link, Route, Switch, useLocation } from "wouter";
 import { Feed } from "../pages/Feed";
 import { BriefingDetail } from "../pages/BriefingDetail";
@@ -34,17 +35,42 @@ function pageName(location: string) {
   return pageNames[location] ?? "今日情报";
 }
 
+function detailBack(location: string) {
+  const fallback = location.startsWith("/reports/") ? "/reports"
+    : location.startsWith("/tasks/") ? "/tasks"
+      : "/feed";
+  const value = new URLSearchParams(window.location.search).get("from");
+  if (!value?.startsWith("/")) return fallback;
+  try {
+    const target = new URL(value, window.location.origin);
+    return target.origin === window.location.origin
+      ? `${target.pathname}${target.search}${target.hash}`
+      : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 export function AppShell() {
   const [location] = useLocation();
-  const isDetailPage = location.startsWith("/items/") || location.startsWith("/reports/") || location.startsWith("/traces/") || location.startsWith("/tasks");
+  const pathname = location.split(/[?#]/, 1)[0];
+  const title = pageName(pathname);
+  const isDetailPage = pathname.startsWith("/items/") || pathname.startsWith("/reports/") || pathname.startsWith("/traces/") || pathname.startsWith("/tasks/");
+  const hidesBottomNav = isDetailPage || pathname === "/tasks";
+  const backHref = isDetailPage ? detailBack(pathname) : null;
+
+  useEffect(() => {
+    document.title = `${title} · 知流`;
+  }, [title]);
 
   return (
-    <div className={`app-layout ${isDetailPage ? "detail-layout" : ""}`}>
+    <div className={`app-layout ${hidesBottomNav ? "detail-layout" : ""}`}>
+      <a className="skip-link" href="#main-content">跳到主要内容</a>
       <aside className="sidebar">
         <div className="sidebar-brand"><Radio size={20} /><strong>知流</strong></div>
         <nav aria-label="桌面导航">
           {desktopNav.map(({ to, label, icon: Icon, end }) => (
-            <Link key={to} href={to} className={(end ? location === to : location.startsWith(to)) ? "active" : ""}>
+            <Link key={to} href={to} className={(end ? pathname === to : pathname.startsWith(to)) || (to === "/settings" && pathname.startsWith("/tasks")) ? "active" : ""}>
               <Icon size={18} /><span>{label}</span>
             </Link>
           ))}
@@ -52,12 +78,14 @@ export function AppShell() {
       </aside>
       <div className="main-column">
         <header className="topbar">
-          <div className="mobile-brand"><Radio size={18} /><span>知流</span></div>
-          <h1>{pageName(location)}</h1>
+          {backHref
+            ? <Link className="topbar-back" href={backHref} aria-label="返回上一列表"><ArrowLeft size={19} /><span>返回</span></Link>
+            : <div className="mobile-brand"><Radio size={18} /><span>知流</span></div>}
+          <h1>{title}</h1>
         </header>
-        <main className="page-content"><Switch><Route path="/items/:id" component={ItemDetail} /><Route path="/reports/:id" component={BriefingDetail} /><Route path="/traces/:id" component={TraceDetail} /><Route path="/tasks/:id" component={TaskDetail} /><Route path="/feed" component={Feed} /><Route path="/reports" component={Reports} /><Route path="/settings" component={Subscriptions} /><Route path="/tasks" component={Tasks} /><Route path="/" component={Home} /><Route component={Home} /></Switch></main>
+        <main id="main-content" tabIndex={-1} className="page-content"><Switch><Route path="/items/:id" component={ItemDetail} /><Route path="/reports/:id" component={BriefingDetail} /><Route path="/traces/:id" component={TraceDetail} /><Route path="/tasks/:id" component={TaskDetail} /><Route path="/feed" component={Feed} /><Route path="/reports" component={Reports} /><Route path="/settings" component={Subscriptions} /><Route path="/tasks" component={Tasks} /><Route path="/" component={Home} /><Route component={Home} /></Switch></main>
       </div>
-      {!isDetailPage && <BottomNav />}
+      {!hidesBottomNav && <BottomNav />}
     </div>
   );
 }
