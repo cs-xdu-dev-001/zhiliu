@@ -16,6 +16,15 @@ const briefing = {
   id: 1, subscriptionId: 1, title: "微信整理 · 今日AI热点简报", kind: "news" as const,
   content: "这是完整报告正文。", itemCount: 3,
   periodStart: "2026-07-31T00:00:00Z", periodEnd: "2026-08-01T00:00:00Z", createdAt: "2026-08-01T08:00:00Z",
+  traceAvailable: true,
+  publication: {
+    id: 7, traceId: "trace-report-7", origin: "weixin-hermes", requestSummary: "整理今天的重要AI动态",
+    createdAt: "2026-08-01T08:00:00Z", hermesRunId: "hermes-7", taskRunId: null,
+  },
+  sourceItems: [{
+    id: 9, title: "Agent框架发布新版本", summary: "工具调用可靠性提升。", source: "Example",
+    url: "https://example.com/agent", ordinal: 0, wasInserted: true,
+  }],
 };
 
 beforeEach(() => {
@@ -45,6 +54,22 @@ it("404时显示报告不存在", async () => {
   get.mockRejectedValue(new ApiError(404, "简报不存在"));
   renderPage();
   expect(await screen.findByText("报告不存在或已删除")).toBeVisible();
+});
+
+it("展示准确来源情报和独立原文链接", async () => {
+  renderPage();
+
+  expect(await screen.findByRole("heading", { name: "来源情报" })).toBeVisible();
+  expect(screen.getByRole("link", { name: "Agent框架发布新版本" })).toHaveAttribute("href", "/items/9?from=%2Freports%2F1");
+  expect(screen.getByRole("link", { name: "打开原文（新窗口）" })).toHaveAttribute("href", "https://example.com/agent");
+  expect(screen.getByRole("link", { name: "查看生成链路" })).toHaveAttribute("href", "/traces/7");
+});
+
+it("历史报告明确显示暂无追踪", async () => {
+  get.mockResolvedValue({ ...briefing, traceAvailable: false, publication: null, sourceItems: [] });
+  renderPage();
+
+  expect(await screen.findByText("历史数据，暂无完整追踪信息")).toBeVisible();
 });
 
 it("拒绝跨站返回地址", async () => {

@@ -25,7 +25,6 @@ async def test_official_client_discovers_and_calls_zhiliu_tools(
         zhiliu_mcp_token=token,
         _env_file=None,
     )
-    monkeypatch.setattr(main_module, "engine", db_session.bind)
     monkeypatch.setattr(main_module, "SessionLocal", lambda: nullcontext(db_session))
     app = create_app(
         start_background_scheduler=False,
@@ -61,6 +60,7 @@ async def test_official_client_discovers_and_calls_zhiliu_tools(
                         "zhiliu_publish",
                         arguments={
                             "idempotencyKey": "official-client-test",
+                            "traceId": "trace-official-client-test",
                             "topic": "MCP测试",
                             "kind": "news",
                             "requestSummary": "保存MCP测试结果",

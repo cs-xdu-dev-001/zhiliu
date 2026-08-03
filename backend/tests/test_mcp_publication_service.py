@@ -14,12 +14,14 @@ from app.mcp_server.service import (
     PublicationFailure,
     PublicationService,
 )
-from app.models import Briefing, HermesPublication, IntelligenceItem, Subscription
+from app.models import Briefing, HermesPublication, IntelligenceItem, PublicationItem, Subscription
 
 
 def publish_payload(**changes) -> PublishPayload:
     data = {
         "idempotencyKey": "wx-agent-20260802",
+        "traceId": "trace-agent-20260802",
+        "hermesRunId": "hermes-run-agent-1",
         "topic": "Agent更新",
         "kind": "news",
         "requestSummary": "整理后放进知流",
@@ -47,6 +49,7 @@ def test_publish_persists_visible_content_atomically(db_session: Session) -> Non
     category = db_session.get(Subscription, item.subscription_id)
 
     assert receipt.item_count == 1
+    assert receipt.trace_id == "trace-agent-20260802"
     assert receipt.briefing_id == briefing.id
     assert item.source == "Example · 微信Hermes"
     assert item.url == "https://example.com/agent"
@@ -54,6 +57,13 @@ def test_publish_persists_visible_content_atomically(db_session: Session) -> Non
     assert category.name == "微信整理·情报"
     assert category.enabled is False
     assert db_session.scalar(select(func.count()).select_from(HermesPublication)) == 1
+    publication = db_session.scalar(select(HermesPublication))
+    link = db_session.scalar(select(PublicationItem))
+    assert publication.trace_id == "trace-agent-20260802"
+    assert publication.hermes_run_id == "hermes-run-agent-1"
+    assert link.item_id == item.id
+    assert link.ordinal == 0
+    assert link.was_inserted is True
 
 
 def test_same_key_and_payload_returns_original_receipt(db_session: Session) -> None:
@@ -103,6 +113,7 @@ def test_existing_item_is_counted_as_skipped(db_session: Session) -> None:
     first = service.publish(publish_payload(briefing=None))
     second_payload = publish_payload(
         idempotencyKey="another-publish",
+        traceId="trace-another-publish",
         topic="另一批",
         briefing=None,
     )
@@ -111,6 +122,31 @@ def test_existing_item_is_counted_as_skipped(db_session: Session) -> None:
     assert first.item_count == 1
     assert second.item_count == 0
     assert second.skipped_count == 1
+    links = db_session.scalars(
+        select(PublicationItem).order_by(PublicationItem.publication_id)
+    ).all()
+    assert len(links) == 2
+    assert links[0].item_id == links[1].item_id
+    assert links[1].was_inserted is False
+
+
+def test_briefing_counts_all_linked_items_including_reused(
+    db_session: Session,
+) -> None:
+    service = PublicationService(db_session)
+    service.publish(publish_payload(briefing=None))
+
+    receipt = service.publish(
+        publish_payload(
+            idempotencyKey="report-with-reused-item",
+            traceId="trace-report-with-reused-item",
+        )
+    )
+    briefing = db_session.get(Briefing, receipt.briefing_id)
+
+    assert receipt.item_count == 0
+    assert receipt.skipped_count == 1
+    assert briefing.item_count == 1
 
 
 def test_concurrent_item_fingerprint_conflict_retries_as_skip(
@@ -118,14 +154,17 @@ def test_concurrent_item_fingerprint_conflict_retries_as_skip(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     service = PublicationService(db_session)
-    insert_items = service._insert_items
+    resolve_items = service._resolve_items
     first_attempt = True
 
-    def collide_once(subscription_id: int, payload: PublishPayload) -> tuple[int, int]:
+    def collide_once(
+        subscription_id: int,
+        payload: PublishPayload,
+    ) -> list[tuple[IntelligenceItem, bool]]:
         nonlocal first_attempt
         if first_attempt:
             first_attempt = False
-            result = insert_items(subscription_id, payload)
+            result = resolve_items(subscription_id, payload)
             db_session.flush()
             db_session.commit()
             raise IntegrityError(
@@ -135,9 +174,9 @@ def test_concurrent_item_fingerprint_conflict_retries_as_skip(
                     "UNIQUE constraint failed: intelligence_items.fingerprint"
                 ),
             )
-        return insert_items(subscription_id, payload)
+        return resolve_items(subscription_id, payload)
 
-    monkeypatch.setattr(service, "_insert_items", collide_once)
+    monkeypatch.setattr(service, "_resolve_items", collide_once)
 
     receipt = service.publish(publish_payload())
 

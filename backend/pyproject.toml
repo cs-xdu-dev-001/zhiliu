@@ -3,6 +3,7 @@ name = "zhiliu-backend"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
+  "alembic>=1.16,<2",
   "apscheduler>=3.11,<4",
   "croniter>=6,<7",
   "cryptography>=45,<46",

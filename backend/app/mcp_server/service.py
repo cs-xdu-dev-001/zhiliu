@@ -11,7 +11,13 @@ from app.mcp_server.schemas import (
     PublishPayload,
     PublishReceipt,
 )
-from app.models import Briefing, HermesPublication, IntelligenceItem, Subscription
+from app.models import (
+    Briefing,
+    HermesPublication,
+    IntelligenceItem,
+    PublicationItem,
+    Subscription,
+)
 from app.services.run_service import item_fingerprint, normalize_url
 
 
@@ -111,8 +117,14 @@ class PublicationService:
     ) -> PublishReceipt:
         try:
             subscription = self._get_or_create_category(payload.kind)
-            inserted, skipped = self._insert_items(subscription.id, payload)
-            briefing = self._insert_briefing(subscription.id, payload, inserted)
+            resolved_items = self._resolve_items(subscription.id, payload)
+            inserted = sum(was_inserted for _, was_inserted in resolved_items)
+            skipped = len(resolved_items) - inserted
+            briefing = self._insert_briefing(
+                subscription.id,
+                payload,
+                len(resolved_items),
+            )
             publication = self._create_receipt(
                 subscription.id,
                 payload,
@@ -120,6 +132,15 @@ class PublicationService:
                 inserted,
                 skipped,
                 briefing.id if briefing else None,
+            )
+            self.db.add_all(
+                PublicationItem(
+                    publication_id=publication.id,
+                    item_id=item.id,
+                    ordinal=ordinal,
+                    was_inserted=was_inserted,
+                )
+                for ordinal, (item, was_inserted) in enumerate(resolved_items)
             )
             receipt = self._receipt(publication, duplicate=False)
             self.db.commit()
@@ -203,46 +224,53 @@ class PublicationService:
             record.enabled = False
         return record
 
-    def _insert_items(self, subscription_id: int, payload: PublishPayload) -> tuple[int, int]:
-        inserted = 0
-        skipped = 0
+    def _resolve_items(
+        self,
+        subscription_id: int,
+        payload: PublishPayload,
+    ) -> list[tuple[IntelligenceItem, bool]]:
+        resolved: list[tuple[IntelligenceItem, bool]] = []
+        seen_item_ids: set[int] = set()
         for item in payload.items:
             normalized_url = normalize_url(str(item.url)).rstrip("/")
             fingerprint = item_fingerprint(item.title, normalized_url)
             existing = self.db.scalar(
-                select(IntelligenceItem.id).where(IntelligenceItem.fingerprint == fingerprint)
+                select(IntelligenceItem).where(IntelligenceItem.fingerprint == fingerprint)
             )
             if existing is not None:
-                skipped += 1
+                if existing.id not in seen_item_ids:
+                    resolved.append((existing, False))
+                    seen_item_ids.add(existing.id)
                 continue
             source = (
                 item.source
                 if item.source.endswith(" · 微信Hermes")
                 else f"{item.source} · 微信Hermes"
             )
-            self.db.add(
-                IntelligenceItem(
-                    subscription_id=subscription_id,
-                    kind=payload.kind,
-                    title=item.title,
-                    summary=item.summary,
-                    url=normalized_url,
-                    source=source,
-                    published_at=item.published_at,
-                    keywords_json=json.dumps(item.keywords, ensure_ascii=False),
-                    reason=item.reason,
-                    importance=item.importance,
-                    fingerprint=fingerprint,
-                )
+            record = IntelligenceItem(
+                subscription_id=subscription_id,
+                kind=payload.kind,
+                title=item.title,
+                summary=item.summary,
+                url=normalized_url,
+                source=source,
+                published_at=item.published_at,
+                keywords_json=json.dumps(item.keywords, ensure_ascii=False),
+                reason=item.reason,
+                importance=item.importance,
+                fingerprint=fingerprint,
             )
-            inserted += 1
-        return inserted, skipped
+            self.db.add(record)
+            self.db.flush()
+            resolved.append((record, True))
+            seen_item_ids.add(record.id)
+        return resolved
 
     def _insert_briefing(
         self,
         subscription_id: int,
         payload: PublishPayload,
-        inserted: int,
+        source_count: int,
     ) -> Briefing | None:
         if payload.briefing is None:
             return None
@@ -253,7 +281,7 @@ class PublicationService:
             title=title if title.startswith(prefix) else f"{prefix}{title}",
             kind=payload.kind,
             content=payload.briefing.content,
-            item_count=inserted,
+            item_count=source_count,
             period_start=payload.briefing.period_start,
             period_end=payload.briefing.period_end,
         )
@@ -275,6 +303,8 @@ class PublicationService:
             payload_hash=digest,
             subscription_id=subscription_id,
             briefing_id=briefing_id,
+            trace_id=payload.trace_id,
+            hermes_run_id=payload.hermes_run_id,
             item_count=inserted,
             skipped_count=skipped,
             topic=payload.topic,
@@ -289,6 +319,7 @@ class PublicationService:
     def _receipt(publication: HermesPublication, *, duplicate: bool) -> PublishReceipt:
         return PublishReceipt(
             receipt_id=publication.id,
+            trace_id=publication.trace_id or "",
             item_count=publication.item_count,
             skipped_count=publication.skipped_count,
             briefing_id=publication.briefing_id,

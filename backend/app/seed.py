@@ -4,7 +4,14 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import Briefing, IntelligenceItem, Subscription, TaskRun
+from app.models import (
+    Briefing,
+    HermesPublication,
+    IntelligenceItem,
+    PublicationItem,
+    Subscription,
+    TaskRun,
+)
 from app.services.run_service import item_fingerprint
 
 
@@ -53,9 +60,9 @@ def seed_database(
         (2, "job", "AI Agent应用开发工程师", "负责Agent工具调用、RAG和业务流程落地。", "https://jobs.example.com/agent-engineer", "Example Jobs", 0.78),
         (2, "job", "LLM平台后端开发", "负责模型网关、调用追踪和应用服务。", "https://jobs.example.com/llm-backend", "Example Jobs", 0.74),
     ]
+    items = []
     for index, (sub_index, kind, title, summary, url, source, importance) in enumerate(items_data):
-        db.add(
-            IntelligenceItem(
+        item = IntelligenceItem(
                 subscription_id=subscriptions[sub_index].id,
                 kind=kind,
                 title=title,
@@ -68,11 +75,12 @@ def seed_database(
                 importance=importance,
                 fingerprint=item_fingerprint(title, url),
             )
-        )
+        db.add(item)
+        items.append(item)
+    db.flush()
 
-    db.add_all(
-        [
-            Briefing(
+    briefings = [
+        Briefing(
                 subscription_id=subscriptions[0].id,
                 title="AI热点日报",
                 kind="news",
@@ -81,7 +89,7 @@ def seed_database(
                 period_start=now - timedelta(days=1),
                 period_end=now,
             ),
-            Briefing(
+        Briefing(
                 subscription_id=subscriptions[1].id,
                 title="Agent论文周报",
                 kind="paper",
@@ -90,15 +98,62 @@ def seed_database(
                 period_start=now - timedelta(days=7),
                 period_end=now,
             ),
-        ]
-    )
-    db.add_all(
-        [
-            TaskRun(subscription_id=subscriptions[0].id, status="success", finished_at=now, duration_ms=8420),
-            TaskRun(subscription_id=subscriptions[1].id, status="success", finished_at=now, duration_ms=12130),
+    ]
+    db.add_all(briefings)
+    db.flush()
+    tasks = [
+            TaskRun(subscription_id=subscriptions[0].id, hermes_run_id="demo-hermes-news", status="success", finished_at=now, duration_ms=8420),
+            TaskRun(subscription_id=subscriptions[1].id, hermes_run_id="demo-hermes-paper", status="success", finished_at=now, duration_ms=12130),
             TaskRun(subscription_id=subscriptions[2].id, status="failed", finished_at=now, duration_ms=3100, error_message="演示：来源暂时不可用"),
             TaskRun(subscription_id=subscriptions[0].id, status="success", finished_at=now, duration_ms=7790),
-        ]
+    ]
+    db.add_all(tasks)
+    db.flush()
+
+    publications = [
+        HermesPublication(
+            idempotency_key="demo-publication-news",
+            payload_hash="1" * 64,
+            subscription_id=subscriptions[0].id,
+            briefing_id=briefings[0].id,
+            trace_id="demo-trace-news",
+            hermes_run_id=tasks[0].hermes_run_id,
+            task_run_id=tasks[0].id,
+            item_count=3,
+            skipped_count=0,
+            topic="AI每日热点",
+            request_summary="演示：检索并整理过去24小时重要AI动态",
+            origin="subscription-hermes",
+        ),
+        HermesPublication(
+            idempotency_key="demo-publication-paper",
+            payload_hash="2" * 64,
+            subscription_id=subscriptions[1].id,
+            briefing_id=briefings[1].id,
+            trace_id="demo-trace-paper",
+            hermes_run_id=tasks[1].hermes_run_id,
+            task_run_id=tasks[1].id,
+            item_count=3,
+            skipped_count=0,
+            topic="Agent论文周报",
+            request_summary="演示：检索并整理过去7天值得阅读的Agent论文",
+            origin="subscription-hermes",
+        ),
+    ]
+    db.add_all(publications)
+    db.flush()
+    db.add_all(
+        PublicationItem(
+            publication_id=publication.id,
+            item_id=item.id,
+            ordinal=ordinal,
+            was_inserted=True,
+        )
+        for publication, source_items in (
+            (publications[0], items[:3]),
+            (publications[1], items[3:6]),
+        )
+        for ordinal, item in enumerate(source_items)
     )
     db.commit()
 

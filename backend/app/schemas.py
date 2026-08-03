@@ -83,6 +83,25 @@ class IntelligenceItemResponse(ApiModel):
     created_at: datetime
 
 
+class PublicationRecordResponse(ApiModel):
+    id: int
+    trace_id: str | None
+    origin: str
+    request_summary: str
+    created_at: datetime
+    hermes_run_id: str | None
+    task_run_id: int | None
+    was_inserted: bool
+    ordinal: int
+    briefing_id: int | None = None
+    briefing_title: str | None = None
+
+
+class ItemDetailResponse(IntelligenceItemResponse):
+    publications: list[PublicationRecordResponse]
+    trace_available: bool
+
+
 class ItemPage(ApiModel):
     items: list[IntelligenceItemResponse]
     total: int
@@ -100,6 +119,65 @@ class BriefingResponse(ApiModel):
     period_start: datetime | None
     period_end: datetime | None
     created_at: datetime
+
+
+class PublicationSummaryResponse(ApiModel):
+    id: int
+    trace_id: str | None
+    origin: str
+    request_summary: str
+    created_at: datetime
+    hermes_run_id: str | None
+    task_run_id: int | None
+
+
+class SourceItemResponse(ApiModel):
+    id: int
+    title: str
+    summary: str
+    source: str
+    url: str
+    ordinal: int
+    was_inserted: bool
+
+
+class BriefingDetailResponse(BriefingResponse):
+    source_items: list[SourceItemResponse]
+    publication: PublicationSummaryResponse | None
+    trace_available: bool
+
+
+class TraceSubscriptionResponse(ApiModel):
+    id: int
+    name: str
+
+
+class TraceTaskRunResponse(ApiModel):
+    id: int
+    status: str
+    started_at: datetime
+    finished_at: datetime | None
+
+
+class TraceBriefingResponse(ApiModel):
+    id: int
+    title: str
+    kind: IntelligenceKind
+
+
+class PublicationTraceResponse(ApiModel):
+    publication_id: int
+    trace_id: str | None
+    origin: str
+    request_summary: str
+    hermes_run_id: str | None
+    created_at: datetime
+    item_count: int
+    skipped_count: int
+    subscription: TraceSubscriptionResponse
+    task_run: TraceTaskRunResponse | None
+    items: list[SourceItemResponse]
+    briefing: TraceBriefingResponse | None
 
 
 class BriefingPage(ApiModel):

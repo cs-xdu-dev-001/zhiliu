@@ -28,6 +28,25 @@ export interface IntelligenceItem {
   createdAt: string;
 }
 
+export interface PublicationRecord {
+  id: number;
+  traceId: string | null;
+  origin: string;
+  requestSummary: string;
+  createdAt: string;
+  hermesRunId: string | null;
+  taskRunId: number | null;
+  wasInserted: boolean;
+  ordinal: number;
+  briefingId: number | null;
+  briefingTitle: string | null;
+}
+
+export interface IntelligenceItemDetail extends IntelligenceItem {
+  publications: PublicationRecord[];
+  traceAvailable: boolean;
+}
+
 export interface ItemPage {
   items: IntelligenceItem[];
   total: number;
@@ -45,6 +64,47 @@ export interface Briefing {
   periodStart: string | null;
   periodEnd: string | null;
   createdAt: string;
+}
+
+export interface SourceItem {
+  id: number;
+  title: string;
+  summary: string;
+  source: string;
+  url: string;
+  ordinal: number;
+  wasInserted: boolean;
+}
+
+export interface PublicationSummary {
+  id: number;
+  traceId: string | null;
+  origin: string;
+  requestSummary: string;
+  createdAt: string;
+  hermesRunId: string | null;
+  taskRunId: number | null;
+}
+
+export interface BriefingDetail extends Briefing {
+  sourceItems: SourceItem[];
+  publication: PublicationSummary | null;
+  traceAvailable: boolean;
+}
+
+export interface PublicationTrace {
+  publicationId: number;
+  traceId: string | null;
+  origin: string;
+  requestSummary: string;
+  hermesRunId: string | null;
+  createdAt: string;
+  itemCount: number;
+  skippedCount: number;
+  subscription: { id: number; name: string };
+  taskRun: Pick<TaskRun, "id" | "status" | "startedAt" | "finishedAt"> | null;
+  items: SourceItem[];
+  briefing: Pick<Briefing, "id" | "title" | "kind"> | null;
 }
 
 export interface BriefingPage {

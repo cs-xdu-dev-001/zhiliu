@@ -6,13 +6,15 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import Briefing, IntelligenceItem, Subscription, TaskRun
+from app.models import Briefing, HermesPublication, IntelligenceItem, PublicationItem, Subscription, TaskRun
 from app.schemas import (
     BriefingResponse,
     DashboardResponse,
     IntelligenceItemResponse,
+    ItemDetailResponse,
     ItemPage,
     ItemStateUpdate,
+    PublicationRecordResponse,
 )
 
 router = APIRouter(prefix="/api", tags=["intelligence"])
@@ -70,12 +72,39 @@ def list_items(
     return ItemPage(items=[serialize_item(record) for record in records], total=total, limit=limit, offset=offset)
 
 
-@router.get("/items/{item_id}", response_model=IntelligenceItemResponse)
-def get_item(item_id: int, db: Session = Depends(get_db)) -> IntelligenceItemResponse:
+@router.get("/items/{item_id}", response_model=ItemDetailResponse)
+def get_item(item_id: int, db: Session = Depends(get_db)) -> ItemDetailResponse:
     record = db.get(IntelligenceItem, item_id)
     if record is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="情报不存在")
-    return serialize_item(record)
+    rows = db.execute(
+        select(PublicationItem, HermesPublication, Briefing)
+        .join(HermesPublication, HermesPublication.id == PublicationItem.publication_id)
+        .outerjoin(Briefing, Briefing.id == HermesPublication.briefing_id)
+        .where(PublicationItem.item_id == item_id)
+        .order_by(HermesPublication.created_at, HermesPublication.id)
+    ).all()
+    publications = [
+        PublicationRecordResponse(
+            id=publication.id,
+            trace_id=publication.trace_id,
+            origin=publication.origin,
+            request_summary=publication.request_summary,
+            created_at=publication.created_at,
+            hermes_run_id=publication.hermes_run_id,
+            task_run_id=publication.task_run_id,
+            was_inserted=link.was_inserted,
+            ordinal=link.ordinal,
+            briefing_id=briefing.id if briefing else None,
+            briefing_title=briefing.title if briefing else None,
+        )
+        for link, publication, briefing in rows
+    ]
+    return ItemDetailResponse(
+        **serialize_item(record).model_dump(),
+        publications=publications,
+        trace_available=bool(publications),
+    )
 
 
 @router.patch("/items/{item_id}", response_model=IntelligenceItemResponse)

@@ -53,6 +53,8 @@ class PublishBriefing(McpModel):
 
 class PublishPayload(McpModel):
     idempotency_key: str = Field(min_length=8, max_length=160)
+    trace_id: str = Field(min_length=8, max_length=160)
+    hermes_run_id: str | None = Field(default=None, max_length=255)
     topic: str = Field(min_length=1, max_length=200)
     kind: IntelligenceKind
     request_summary: str = Field(min_length=1, max_length=1000)
@@ -68,6 +70,7 @@ class PublishPayload(McpModel):
 
 class PublishReceipt(McpModel):
     receipt_id: int
+    trace_id: str
     item_count: int
     skipped_count: int
     briefing_id: int | None

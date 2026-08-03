@@ -5,10 +5,10 @@ from fastapi import FastAPI
 from app import models  # noqa: F401
 from app.api.briefings import router as briefings_router
 from app.api.items import router as items_router
+from app.api.publications import router as publications_router
 from app.api.runs import router as runs_router
 from app.api.hermes_integration import router as hermes_integration_router
 from app.api.subscriptions import router as subscriptions_router
-from app.db import Base, engine
 from app.db import SessionLocal
 from app.core.config import get_settings
 from app.core.config import Settings
@@ -36,7 +36,6 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
-        Base.metadata.create_all(bind=engine)
         with SessionLocal() as db:
             seed_database(
                 db,
@@ -53,6 +52,7 @@ def create_app(
     application.include_router(subscriptions_router)
     application.include_router(items_router)
     application.include_router(briefings_router)
+    application.include_router(publications_router)
     application.include_router(runs_router)
     application.include_router(hermes_integration_router)
 

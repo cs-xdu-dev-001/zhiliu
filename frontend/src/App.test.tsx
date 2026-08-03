@@ -6,6 +6,7 @@ import { App } from "./App";
 
 vi.mock("./pages/ItemDetail", () => ({ ItemDetail: () => <p>情报详情内容</p> }));
 vi.mock("./pages/BriefingDetail", () => ({ BriefingDetail: () => <p>报告详情内容</p> }));
+vi.mock("./pages/TraceDetail", () => ({ TraceDetail: () => <p>处理链路内容</p> }));
 
 afterEach(cleanup);
 
@@ -30,4 +31,9 @@ test("报告详情路由显示正确顶栏标题", () => {
   renderApp("/reports/1");
   expect(screen.getByRole("heading", { name: "报告详情" })).toBeVisible();
   expect(screen.getByText("报告详情内容")).toBeVisible();
+});
+
+test.each(["/items/1", "/reports/1", "/traces/1"])("详情页隐藏会覆盖内容的手机底部导航：%s", (path) => {
+  renderApp(path);
+  expect(screen.queryByRole("navigation", { name: "主导航" })).not.toBeInTheDocument();
 });

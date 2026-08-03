@@ -1,9 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Bookmark, Check, ExternalLink, EyeOff } from "lucide-react";
+import { ArrowLeft, Bookmark, Check, ExternalLink, EyeOff, FileText, GitBranch } from "lucide-react";
 import { Link, useParams, useSearchParams } from "wouter";
 
 import { api, ApiError } from "../api";
-import type { IntelligenceItem } from "../types";
+import type { IntelligenceItem, IntelligenceItemDetail } from "../types";
 
 const kindLabels = { news: "热点", paper: "论文", job: "招聘" };
 
@@ -25,13 +25,13 @@ export function ItemDetail() {
   const queryClient = useQueryClient();
   const query = useQuery({
     queryKey: ["item", id],
-    queryFn: () => api.get<IntelligenceItem>(`/api/items/${id}`),
+    queryFn: () => api.get<IntelligenceItemDetail>(`/api/items/${id}`),
   });
   const update = useMutation({
     mutationFn: (patch: Partial<Pick<IntelligenceItem, "isRead" | "isSaved" | "isIgnored">>) =>
       api.patch<IntelligenceItem>(`/api/items/${id}`, patch),
     onSuccess: (item) => {
-      queryClient.setQueryData(["item", id], item);
+      queryClient.setQueryData<IntelligenceItemDetail>(["item", id], (current) => current ? { ...current, ...item } : current);
       queryClient.invalidateQueries({ queryKey: ["items"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
     },
@@ -66,6 +66,34 @@ export function ItemDetail() {
         </section>
         <div className="keyword-row">{item.keywords.map((keyword) => <span key={keyword}>{keyword}</span>)}</div>
       </div>
+      <section className="lineage-section" aria-labelledby="lineage-heading">
+        <div className="lineage-heading">
+          <GitBranch size={19} />
+          <h2 id="lineage-heading">写入记录</h2>
+        </div>
+        {item.traceAvailable ? (
+          <div className="publication-list">
+            {item.publications.map((publication, index) => (
+              <div className="publication-row" key={publication.id}>
+                <div className="publication-row-main">
+                  <strong>{publication.requestSummary}</strong>
+                  <div className="lineage-meta">
+                    <span>{index === 0 && publication.wasInserted ? "首次写入" : "再次引用"}</span>
+                    <span>{publication.origin === "weixin-hermes" ? "微信Hermes" : "定时订阅"}</span>
+                    <time dateTime={publication.createdAt}>{new Date(publication.createdAt).toLocaleString("zh-CN")}</time>
+                  </div>
+                </div>
+                <div className="lineage-links">
+                  {publication.briefingId && publication.briefingTitle && (
+                    <Link href={`/reports/${publication.briefingId}`}><FileText size={16} />{publication.briefingTitle}</Link>
+                  )}
+                  <Link href={`/traces/${publication.id}`}>查看完整链路</Link>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : <p className="trace-empty">历史数据，暂无完整追踪信息</p>}
+      </section>
       {update.isError && <div className="action-notice error" role="alert">操作未完成，请重试</div>}
       <div className="detail-actions">
         <button disabled={busy} onClick={() => update.mutate({ isSaved: !item.isSaved })}><Bookmark size={17} fill={item.isSaved ? "currentColor" : "none"} />{item.isSaved ? "取消收藏" : "收藏"}</button>

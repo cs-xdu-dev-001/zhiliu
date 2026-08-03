@@ -103,6 +103,8 @@ hermes skills list
 
 配置中的`http://127.0.0.1:8080/api/mcp`适用于Hermes和知流部署在同一台服务器、Web仅绑定本机8080端口的情况。验收时可直接在微信发送：“请检索今天最重要的三条Agent动态，整理好以后放进知流。”Hermes只有在MCP工具返回成功后才应确认写入；随后在知流“情报”和“报告”页核对内容与原始来源。
 
+`zhiliu_publish`要求Hermes为每次微信指令生成8至160字符的稳定`traceId`，同一次重试必须复用；能取得真实任务ID时另传`hermesRunId`，不能取得时省略，不得伪造。知流只保存脱敏后的`requestSummary`，不接收微信用户ID、群ID、昵称或完整聊天记录。写入成功后可从报告“来源情报”或情报“写入记录”进入完整链路页。
+
 ## VPS部署
 
 ```bash
@@ -162,6 +164,8 @@ docker cp "$(docker compose ps -q backend):/data/zhiliu-backup.db" ./zhiliu-back
 ```
 
 将`zhiliu-backup.db`纳入服务器现有的restic/rclone备份任务。
+
+数据库结构由Alembic管理，后端容器每次启动会先执行`alembic upgrade head`。升级前必须完成上述一致性备份；若要回滚到旧版应用，必须同时恢复升级前数据库备份，禁止只回滚容器并继续使用已升级的SQLite，也不要执行`docker compose down -v`。
 
 ## 验证
 

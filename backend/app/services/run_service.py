@@ -7,7 +7,7 @@ from urllib.parse import urlsplit, urlunsplit
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import Briefing, IntelligenceItem, TaskRun
+from app.models import Briefing, HermesPublication, IntelligenceItem, PublicationItem, TaskRun
 from app.services.hermes import HermesClient
 
 
@@ -43,43 +43,78 @@ class RunService:
             task.hermes_run_id = result.run_id
             task.raw_output = result.raw_output
 
+            resolved_items: list[tuple[IntelligenceItem, bool]] = []
             for item in result.items:
                 fingerprint = item_fingerprint(item.title, item.url)
                 existing = self.db.scalar(
                     select(IntelligenceItem).where(IntelligenceItem.fingerprint == fingerprint)
                 )
                 if existing is not None:
+                    resolved_items.append((existing, False))
                     continue
-                self.db.add(
-                    IntelligenceItem(
-                        subscription_id=task.subscription_id,
-                        kind=item.kind,
-                        title=item.title,
-                        summary=item.summary,
-                        url=normalize_url(item.url),
-                        source=item.source,
-                        published_at=item.published_at,
-                        keywords_json=json.dumps(item.keywords, ensure_ascii=False),
-                        reason=item.reason,
-                        importance=max(0, min(item.importance, 1)),
-                        fingerprint=fingerprint,
-                    )
-                )
-
-            self.db.add(
-                Briefing(
+                record = IntelligenceItem(
                     subscription_id=task.subscription_id,
-                    title=result.briefing.title,
-                    kind=result.briefing.kind,
-                    content=result.briefing.content,
-                    item_count=len(result.items),
-                    period_start=result.briefing.period_start,
-                    period_end=result.briefing.period_end,
+                    kind=item.kind,
+                    title=item.title,
+                    summary=item.summary,
+                    url=normalize_url(item.url),
+                    source=item.source,
+                    published_at=item.published_at,
+                    keywords_json=json.dumps(item.keywords, ensure_ascii=False),
+                    reason=item.reason,
+                    importance=max(0, min(item.importance, 1)),
+                    fingerprint=fingerprint,
                 )
+                self.db.add(record)
+                self.db.flush()
+                resolved_items.append((record, True))
+
+            briefing = Briefing(
+                subscription_id=task.subscription_id,
+                title=result.briefing.title,
+                kind=result.briefing.kind,
+                content=result.briefing.content,
+                item_count=len(resolved_items),
+                period_start=result.briefing.period_start,
+                period_end=result.briefing.period_end,
+            )
+            self.db.add(briefing)
+            self.db.flush()
+
+            inserted = sum(was_inserted for _, was_inserted in resolved_items)
+            trace_id = f"task-run:{task.id}"
+            publication = HermesPublication(
+                idempotency_key=trace_id,
+                payload_hash=hashlib.sha256(trace_id.encode()).hexdigest(),
+                subscription_id=task.subscription_id,
+                briefing_id=briefing.id,
+                trace_id=trace_id,
+                hermes_run_id=result.run_id,
+                task_run_id=task.id,
+                item_count=inserted,
+                skipped_count=len(resolved_items) - inserted,
+                topic=task.subscription.name,
+                request_summary=task.subscription.prompt[:1000],
+                origin="subscription-hermes",
+            )
+            self.db.add(publication)
+            self.db.flush()
+            self.db.add_all(
+                PublicationItem(
+                    publication_id=publication.id,
+                    item_id=item.id,
+                    ordinal=ordinal,
+                    was_inserted=was_inserted,
+                )
+                for ordinal, (item, was_inserted) in enumerate(resolved_items)
             )
             task.subscription.last_run_at = datetime.now(timezone.utc)
             task.status = "success"
         except Exception as exc:
+            self.db.rollback()
+            task = self.db.get(TaskRun, task_id)
+            if task is None:
+                raise
             task.status = "failed"
             task.error_message = str(exc)[:2000]
         finally:

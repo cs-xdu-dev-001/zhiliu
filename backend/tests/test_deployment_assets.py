@@ -24,6 +24,8 @@ def test_hermes_assets_use_authenticated_local_mcp() -> None:
     assert "先完成理解、检索、核验和整理" in skill
     assert "不要要求固定前缀" in skill
     assert "微信用户ID" in skill
+    assert "traceId" in skill
+    assert "重试" in skill
 
 
 def test_nginx_has_dedicated_streaming_mcp_proxy() -> None:

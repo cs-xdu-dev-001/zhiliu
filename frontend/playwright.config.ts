@@ -1,4 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+const e2eDatabase = join(tmpdir(), `zhiliu-e2e-${process.pid}.db`).replaceAll("\\", "/");
 
 export default defineConfig({
   testDir: "./e2e",
@@ -12,10 +16,10 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: "uv run uvicorn app.main:app --host 127.0.0.1 --port 18010",
+      command: "uv run alembic upgrade head && uv run uvicorn app.main:app --host 127.0.0.1 --port 18010",
       cwd: "../backend",
       env: {
-        DATABASE_URL: `sqlite:///file:zhiliu-e2e-${process.pid}?mode=memory&cache=shared&uri=true`,
+        DATABASE_URL: `sqlite:///${e2eDatabase}`,
         SCHEDULER_ENABLED: "false",
         DEMO_MODE: "true",
       },

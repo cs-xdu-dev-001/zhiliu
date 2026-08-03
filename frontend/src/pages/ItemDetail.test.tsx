@@ -18,6 +18,12 @@ const item = {
   summary: "完整摘要。", url: "https://example.com", source: "Example · 微信Hermes",
   publishedAt: "2026-08-01T00:00:00Z", keywords: ["Agent", "MCP"], reason: "影响Agent开发工作流",
   importance: 0.9, isRead: false, isSaved: false, isIgnored: false, createdAt: "2026-08-01T00:00:00Z",
+  traceAvailable: true,
+  publications: [{
+    id: 7, traceId: "trace-agent-7", origin: "weixin-hermes", requestSummary: "整理Agent更新并放进知流",
+    createdAt: "2026-08-01T01:00:00Z", hermesRunId: "hermes-7", taskRunId: null,
+    wasInserted: true, ordinal: 0, briefingId: 3, briefingTitle: "Agent更新报告",
+  }],
 };
 
 beforeEach(() => {
@@ -49,6 +55,23 @@ it("可以在详情收藏", async () => {
   await screen.findByText("完整摘要。");
   await userEvent.click(screen.getByRole("button", { name: "收藏" }));
   expect(patch).toHaveBeenCalledWith("/api/items/1", { isSaved: true });
+});
+
+it("展示Hermes写入记录和完整链路入口", async () => {
+  renderPage();
+
+  expect(await screen.findByRole("heading", { name: "写入记录" })).toBeVisible();
+  expect(screen.getByText("整理Agent更新并放进知流")).toBeVisible();
+  expect(screen.getByText("首次写入")).toBeVisible();
+  expect(screen.getByRole("link", { name: "查看完整链路" })).toHaveAttribute("href", "/traces/7");
+  expect(screen.getByRole("link", { name: "Agent更新报告" })).toHaveAttribute("href", "/reports/3");
+});
+
+it("历史情报明确显示暂无追踪", async () => {
+  get.mockResolvedValue({ ...item, traceAvailable: false, publications: [] });
+  renderPage();
+
+  expect(await screen.findByText("历史数据，暂无完整追踪信息")).toBeVisible();
 });
 
 it("404时显示详情不存在", async () => {

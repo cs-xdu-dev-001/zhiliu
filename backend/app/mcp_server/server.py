@@ -33,9 +33,11 @@ def build_mcp_server(session_factory: SessionFactory = SessionLocal) -> FastMCP:
     @server.tool(name="zhiliu_publish")
     def zhiliu_publish(
         idempotencyKey: str,
+        traceId: str,
         topic: str,
         kind: IntelligenceKind,
         requestSummary: str,
+        hermesRunId: str | None = None,
         items: list[PublishItem] | None = None,
         briefing: PublishBriefing | None = None,
     ) -> PublishReceipt:
@@ -43,6 +45,8 @@ def build_mcp_server(session_factory: SessionFactory = SessionLocal) -> FastMCP:
         payload = PublishPayload.model_validate(
             {
                 "idempotencyKey": idempotencyKey,
+                "traceId": traceId,
+                "hermesRunId": hermesRunId,
                 "topic": topic,
                 "kind": kind,
                 "requestSummary": requestSummary,

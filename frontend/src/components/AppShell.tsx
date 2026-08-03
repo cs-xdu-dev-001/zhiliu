@@ -7,6 +7,7 @@ import { ItemDetail } from "../pages/ItemDetail";
 import { Reports } from "../pages/Reports";
 import { Subscriptions } from "../pages/Subscriptions";
 import { Tasks } from "../pages/Tasks";
+import { TraceDetail } from "../pages/TraceDetail";
 import { BottomNav } from "./BottomNav";
 
 const pageNames: Record<string, string> = {
@@ -27,14 +28,16 @@ const desktopNav = [
 function pageName(location: string) {
   if (location.startsWith("/items/")) return "情报详情";
   if (location.startsWith("/reports/")) return "报告详情";
+  if (location.startsWith("/traces/")) return "处理链路";
   return pageNames[location] ?? "今日情报";
 }
 
 export function AppShell() {
   const [location] = useLocation();
+  const isDetailPage = location.startsWith("/items/") || location.startsWith("/reports/") || location.startsWith("/traces/");
 
   return (
-    <div className="app-layout">
+    <div className={`app-layout ${isDetailPage ? "detail-layout" : ""}`}>
       <aside className="sidebar">
         <div className="sidebar-brand"><Radio size={20} /><strong>知流</strong></div>
         <nav aria-label="桌面导航">
@@ -50,9 +53,9 @@ export function AppShell() {
           <div className="mobile-brand"><Radio size={18} /><span>知流</span></div>
           <h1>{pageName(location)}</h1>
         </header>
-        <main className="page-content"><Switch><Route path="/items/:id" component={ItemDetail} /><Route path="/reports/:id" component={BriefingDetail} /><Route path="/feed" component={Feed} /><Route path="/reports" component={Reports} /><Route path="/settings" component={Subscriptions} /><Route path="/tasks" component={Tasks} /><Route path="/" component={Home} /><Route component={Home} /></Switch></main>
+        <main className="page-content"><Switch><Route path="/items/:id" component={ItemDetail} /><Route path="/reports/:id" component={BriefingDetail} /><Route path="/traces/:id" component={TraceDetail} /><Route path="/feed" component={Feed} /><Route path="/reports" component={Reports} /><Route path="/settings" component={Subscriptions} /><Route path="/tasks" component={Tasks} /><Route path="/" component={Home} /><Route component={Home} /></Switch></main>
       </div>
-      <BottomNav />
+      {!isDetailPage && <BottomNav />}
     </div>
   );
 }

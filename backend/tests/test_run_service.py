@@ -4,7 +4,7 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import Briefing, IntelligenceItem, TaskRun
+from app.models import Briefing, HermesPublication, IntelligenceItem, PublicationItem, TaskRun
 from app.services.hermes import HermesBriefing, HermesItem, HermesResult
 from app.services.run_service import RunService, item_fingerprint
 
@@ -54,6 +54,15 @@ async def test_run_service_persists_result_and_completes_task(
     assert task.hermes_run_id == "run_demo"
     assert db_session.scalar(select(func.count()).select_from(IntelligenceItem)) == 1
     assert db_session.scalar(select(func.count()).select_from(Briefing)) == 1
+    publication = db_session.scalar(select(HermesPublication))
+    link = db_session.scalar(select(PublicationItem))
+    assert publication.origin == "subscription-hermes"
+    assert publication.trace_id == f"task-run:{task.id}"
+    assert publication.hermes_run_id == "run_demo"
+    assert publication.task_run_id == task.id
+    assert publication.briefing_id is not None
+    assert link.publication_id == publication.id
+    assert link.was_inserted is True
 
 
 @pytest.mark.asyncio
@@ -84,4 +93,10 @@ async def test_run_service_does_not_overwrite_existing_item_state(
     assert db_session.scalar(select(func.count()).select_from(IntelligenceItem)) == 1
     assert existing.is_saved is True
     assert existing.summary == "old"
+    publication = db_session.scalar(select(HermesPublication))
+    link = db_session.scalar(select(PublicationItem))
+    assert publication.item_count == 0
+    assert publication.skipped_count == 1
+    assert link.item_id == existing.id
+    assert link.was_inserted is False
 

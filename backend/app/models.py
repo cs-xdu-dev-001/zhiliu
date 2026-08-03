@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -60,6 +60,10 @@ class IntelligenceItem(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     subscription: Mapped[Subscription] = relationship(back_populates="items")
+    publication_links: Mapped[list["PublicationItem"]] = relationship(
+        back_populates="item",
+        cascade="all, delete-orphan",
+    )
 
 
 class Briefing(Base):
@@ -86,12 +90,41 @@ class HermesPublication(Base):
     payload_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     subscription_id: Mapped[int] = mapped_column(ForeignKey("subscriptions.id"), index=True)
     briefing_id: Mapped[int | None] = mapped_column(ForeignKey("briefings.id"), nullable=True)
+    trace_id: Mapped[str | None] = mapped_column(String(160), nullable=True, index=True)
+    hermes_run_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    task_run_id: Mapped[int | None] = mapped_column(ForeignKey("task_runs.id"), nullable=True, index=True)
     item_count: Mapped[int] = mapped_column(Integer, default=0)
     skipped_count: Mapped[int] = mapped_column(Integer, default=0)
     topic: Mapped[str] = mapped_column(String(200))
     request_summary: Mapped[str] = mapped_column(String(1000))
     origin: Mapped[str] = mapped_column(String(40), default="weixin-hermes")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+    item_links: Mapped[list["PublicationItem"]] = relationship(
+        back_populates="publication",
+        cascade="all, delete-orphan",
+        order_by="PublicationItem.ordinal",
+    )
+
+
+class PublicationItem(Base):
+    __tablename__ = "publication_items"
+    __table_args__ = (
+        UniqueConstraint("publication_id", "item_id", name="uq_publication_items_publication_item"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    publication_id: Mapped[int] = mapped_column(
+        ForeignKey("hermes_publications.id", ondelete="CASCADE"),
+        index=True,
+    )
+    item_id: Mapped[int] = mapped_column(ForeignKey("intelligence_items.id"), index=True)
+    ordinal: Mapped[int] = mapped_column(Integer)
+    was_inserted: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+    publication: Mapped[HermesPublication] = relationship(back_populates="item_links")
+    item: Mapped[IntelligenceItem] = relationship(back_populates="publication_links")
 
 
 class TaskRun(Base):

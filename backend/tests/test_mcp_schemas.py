@@ -7,6 +7,7 @@ from app.mcp_server.schemas import PublishPayload
 def valid_payload() -> dict:
     return {
         "idempotencyKey": "wx-20260802-agent-news",
+        "traceId": "trace-20260802-agent-news",
         "topic": "Agent新闻",
         "kind": "news",
         "requestSummary": "整理并保存今天的重要Agent新闻",
@@ -56,7 +57,25 @@ def test_publish_accepts_camel_case_and_normalizes_keywords() -> None:
     parsed = PublishPayload.model_validate(payload)
 
     assert parsed.request_summary == "整理并保存今天的重要Agent新闻"
+    assert parsed.trace_id == "trace-20260802-agent-news"
     assert parsed.items[0].keywords == ["Agent", "RAG"]
+
+
+def test_publish_requires_trace_id() -> None:
+    payload = valid_payload()
+    payload.pop("traceId")
+
+    with pytest.raises(ValidationError, match="traceId"):
+        PublishPayload.model_validate(payload)
+
+
+def test_publish_accepts_optional_real_hermes_run_id() -> None:
+    payload = valid_payload()
+    payload["hermesRunId"] = "hermes-run-42"
+
+    parsed = PublishPayload.model_validate(payload)
+
+    assert parsed.hermes_run_id == "hermes-run-42"
 
 
 def test_publish_rejects_unknown_fields() -> None:
