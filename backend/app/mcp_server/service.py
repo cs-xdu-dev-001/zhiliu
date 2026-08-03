@@ -1,5 +1,6 @@
 import hashlib
 import json
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -10,6 +11,9 @@ from app.mcp_server.schemas import (
     MonitorReceipt,
     PublishPayload,
     PublishReceipt,
+    TaskFailurePayload,
+    TaskFeedbackReceipt,
+    TaskStartPayload,
 )
 from app.models import (
     Briefing,
@@ -17,8 +21,9 @@ from app.models import (
     IntelligenceItem,
     PublicationItem,
     Subscription,
+    TaskRun,
 )
-from app.services.run_service import item_fingerprint, normalize_url
+from app.services.run_service import canonical_item, item_fingerprint, normalize_url
 
 
 AUTO_CATEGORIES = {
@@ -31,6 +36,14 @@ AUTO_SCHEDULE = "0 0 1 1 *"
 AUTO_PROMPT = "系统分类：保存Hermes微信一次性整理结果，不参与定时执行。"
 
 
+def elapsed_ms(started_at: datetime, finished_at: datetime) -> int:
+    if started_at.tzinfo is None and finished_at.tzinfo is not None:
+        finished_at = finished_at.replace(tzinfo=None)
+    elif started_at.tzinfo is not None and finished_at.tzinfo is None:
+        started_at = started_at.replace(tzinfo=None)
+    return max(0, int((finished_at - started_at).total_seconds() * 1000))
+
+
 class PublicationConflict(ValueError):
     pass
 
@@ -41,6 +54,81 @@ class PublicationFailure(RuntimeError):
 
 class MonitorFailure(RuntimeError):
     pass
+
+
+class TaskFeedbackService:
+    def __init__(self, db: Session, *, public_base_url: str = "") -> None:
+        self.db = db
+        self.public_base_url = public_base_url.rstrip("/")
+
+    def begin(self, payload: TaskStartPayload) -> TaskFeedbackReceipt:
+        existing = self.db.scalar(
+            select(TaskRun).where(TaskRun.trace_id == payload.trace_id)
+        )
+        if existing is not None:
+            if (
+                existing.topic != payload.topic
+                or existing.request_summary != payload.request_summary
+                or existing.subscription.kind != payload.kind
+            ):
+                raise PublicationConflict("追踪号已用于不同任务，请生成新追踪号")
+            return self._receipt(existing, duplicate=True)
+
+        category = PublicationService(
+            self.db,
+            public_base_url=self.public_base_url,
+        )._get_or_create_category(payload.kind)
+        task = TaskRun(
+            subscription_id=category.id,
+            hermes_run_id=payload.hermes_run_id,
+            trace_id=payload.trace_id,
+            origin="weixin-hermes",
+            topic=payload.topic,
+            request_summary=payload.request_summary,
+            status="running",
+            stage="processing",
+        )
+        self.db.add(task)
+        self.db.commit()
+        self.db.refresh(task)
+        return self._receipt(task, duplicate=False)
+
+    def fail(self, payload: TaskFailurePayload) -> TaskFeedbackReceipt:
+        task = self.db.scalar(
+            select(TaskRun).where(TaskRun.trace_id == payload.trace_id)
+        )
+        if task is None:
+            raise PublicationConflict("没有找到对应的知流任务，请先调用zhiliu_begin_task")
+        if task.status == "success":
+            raise PublicationConflict("任务已完成，不能改为失败")
+        if payload.hermes_run_id:
+            task.hermes_run_id = payload.hermes_run_id
+        task.status = "failed"
+        task.stage = "failed"
+        task.error_message = payload.error_message
+        task.finished_at = datetime.now(timezone.utc)
+        task.duration_ms = elapsed_ms(task.started_at, task.finished_at)
+        self.db.commit()
+        return self._receipt(task, duplicate=False)
+
+    @staticmethod
+    def _receipt(task: TaskRun, *, duplicate: bool) -> TaskFeedbackReceipt:
+        failed = task.status == "failed"
+        completed = task.status == "success"
+        return TaskFeedbackReceipt(
+            task_run_id=task.id,
+            trace_id=task.trace_id or "",
+            status="failed" if failed else "success" if completed else "running",
+            stage="failed" if failed else "completed" if completed else "processing",
+            message=(
+                task.error_message or "任务处理失败"
+                if failed
+                else task.result_summary or "任务已完成"
+                if completed
+                else "知流已受理，Hermes正在整理"
+            ),
+            duplicate=duplicate,
+        )
 
 
 def monitor_subscription_id(payload: MonitorPayload) -> int:
@@ -85,8 +173,9 @@ def publication_hash(payload: PublishPayload) -> str:
 
 
 class PublicationService:
-    def __init__(self, db: Session) -> None:
+    def __init__(self, db: Session, *, public_base_url: str = "") -> None:
         self.db = db
+        self.public_base_url = public_base_url.rstrip("/")
 
     def publish(self, payload: PublishPayload) -> PublishReceipt:
         digest = publication_hash(payload)
@@ -238,6 +327,7 @@ class PublicationService:
                 select(IntelligenceItem).where(IntelligenceItem.fingerprint == fingerprint)
             )
             if existing is not None:
+                existing = canonical_item(self.db, existing)
                 if existing.id not in seen_item_ids:
                     resolved.append((existing, False))
                     seen_item_ids.add(existing.id)
@@ -298,6 +388,9 @@ class PublicationService:
         skipped: int,
         briefing_id: int | None,
     ) -> HermesPublication:
+        task = self.db.scalar(
+            select(TaskRun).where(TaskRun.trace_id == payload.trace_id)
+        )
         publication = HermesPublication(
             idempotency_key=payload.idempotency_key,
             payload_hash=digest,
@@ -305,6 +398,7 @@ class PublicationService:
             briefing_id=briefing_id,
             trace_id=payload.trace_id,
             hermes_run_id=payload.hermes_run_id,
+            task_run_id=task.id if task else None,
             item_count=inserted,
             skipped_count=skipped,
             topic=payload.topic,
@@ -313,16 +407,36 @@ class PublicationService:
         )
         self.db.add(publication)
         self.db.flush()
+        if task is not None:
+            now = datetime.now(timezone.utc)
+            report_title = self.db.get(Briefing, briefing_id).title if briefing_id else None
+            summary = f"新增{inserted}条情报，复用{skipped}条"
+            if report_title:
+                summary += f"，生成报告《{report_title}》"
+            task.hermes_run_id = payload.hermes_run_id or task.hermes_run_id
+            task.status = "success"
+            task.stage = "completed"
+            task.result_summary = summary
+            task.error_message = None
+            task.finished_at = now
+            task.duration_ms = elapsed_ms(task.started_at, now)
         return publication
 
-    @staticmethod
-    def _receipt(publication: HermesPublication, *, duplicate: bool) -> PublishReceipt:
+    def _receipt(self, publication: HermesPublication, *, duplicate: bool) -> PublishReceipt:
+        task = self.db.get(TaskRun, publication.task_run_id) if publication.task_run_id else None
+        message = task.result_summary if task and task.result_summary else (
+            f"新增{publication.item_count}条情报，复用{publication.skipped_count}条"
+        )
+        trace_path = f"/traces/{publication.id}"
         return PublishReceipt(
             receipt_id=publication.id,
             trace_id=publication.trace_id or "",
             item_count=publication.item_count,
             skipped_count=publication.skipped_count,
             briefing_id=publication.briefing_id,
+            task_run_id=publication.task_run_id,
+            message=message,
+            trace_url=f"{self.public_base_url}{trace_path}" if self.public_base_url else None,
             created_at=publication.created_at,
             duplicate=duplicate,
         )

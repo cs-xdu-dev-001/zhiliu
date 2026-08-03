@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { Route } from "wouter";
 
@@ -30,9 +31,15 @@ const briefing = {
 beforeEach(() => {
   window.history.pushState({}, "", "/reports/1?from=%2Freports");
   get.mockReset().mockResolvedValue(briefing);
+  Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: vi.fn().mockResolvedValue(undefined) } });
+  Object.defineProperty(URL, "createObjectURL", { configurable: true, value: vi.fn(() => "blob:report") });
+  Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: vi.fn() });
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 function renderPage() {
   return render(
@@ -63,6 +70,22 @@ it("展示准确来源情报和独立原文链接", async () => {
   expect(screen.getByRole("link", { name: "Agent框架发布新版本" })).toHaveAttribute("href", "/items/9?from=%2Freports%2F1");
   expect(screen.getByRole("link", { name: "打开原文（新窗口）" })).toHaveAttribute("href", "https://example.com/agent");
   expect(screen.getByRole("link", { name: "查看生成链路" })).toHaveAttribute("href", "/traces/7");
+  expect(screen.getByText("1条")).toBeVisible();
+});
+
+it("复制摘要并导出Markdown", async () => {
+  const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+  renderPage();
+
+  await screen.findByRole("heading", { name: "微信整理 · 今日AI热点简报" });
+  await userEvent.click(screen.getByRole("button", { name: "复制摘要" }));
+  expect(navigator.clipboard.writeText).toHaveBeenCalledWith("微信整理 · 今日AI热点简报\n\n这是完整报告正文。");
+  expect(await screen.findByText("报告摘要已复制")).toBeVisible();
+
+  await userEvent.click(screen.getByRole("button", { name: "导出Markdown" }));
+  expect(URL.createObjectURL).toHaveBeenCalled();
+  expect(anchorClick).toHaveBeenCalled();
+  expect(await screen.findByText("Markdown报告已导出")).toBeVisible();
 });
 
 it("历史报告明确显示暂无追踪", async () => {
@@ -70,6 +93,14 @@ it("历史报告明确显示暂无追踪", async () => {
   renderPage();
 
   expect(await screen.findByText("历史数据，暂无完整追踪信息")).toBeVisible();
+});
+
+it("拒绝非HTTP来源链接", async () => {
+  get.mockResolvedValue({ ...briefing, sourceItems: [{ ...briefing.sourceItems[0], url: "javascript:alert(1)" }] });
+  renderPage();
+
+  expect(await screen.findByText("原文链接不可用")).toBeVisible();
+  expect(screen.queryByRole("link", { name: "打开原文（新窗口）" })).not.toBeInTheDocument();
 });
 
 it("拒绝跨站返回地址", async () => {

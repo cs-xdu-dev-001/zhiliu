@@ -100,3 +100,42 @@ async def test_run_service_does_not_overwrite_existing_item_state(
     assert link.item_id == existing.id
     assert link.was_inserted is False
 
+
+@pytest.mark.asyncio
+async def test_run_service_reuses_merge_target_instead_of_audit_source(
+    db_session: Session,
+    subscription,
+) -> None:
+    source = IntelligenceItem(
+        subscription_id=subscription.id,
+        kind="news",
+        title="Agent框架发布新版本",
+        summary="旧记录",
+        url="https://example.com/new-agent",
+        source="Example Research",
+        keywords_json="[]",
+        fingerprint=item_fingerprint("Agent框架发布新版本", "https://example.com/new-agent"),
+        is_invalid=True,
+    )
+    target = IntelligenceItem(
+        subscription_id=subscription.id,
+        kind="news",
+        title="Agent框架正式版本",
+        summary="保留记录",
+        url="https://example.com/canonical-agent",
+        source="Example Research",
+        keywords_json="[]",
+        fingerprint=item_fingerprint("Agent框架正式版本", "https://example.com/canonical-agent"),
+    )
+    db_session.add_all([source, target])
+    db_session.flush()
+    source.merged_into_id = target.id
+    task = TaskRun(subscription_id=subscription.id, status="queued")
+    db_session.add(task)
+    db_session.commit()
+
+    await RunService(db_session, FakeHermesClient()).execute_task(task.id)
+
+    link = db_session.scalar(select(PublicationItem))
+    assert link.item_id == target.id
+

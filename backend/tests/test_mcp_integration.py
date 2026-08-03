@@ -53,7 +53,9 @@ async def test_official_client_discovers_and_calls_zhiliu_tools(
                     await session.initialize()
                     tools = await session.list_tools()
                     assert {tool.name for tool in tools.tools} == {
+                        "zhiliu_begin_task",
                         "zhiliu_publish",
+                        "zhiliu_report_failure",
                         "zhiliu_create_monitor",
                     }
                     result = await session.call_tool(

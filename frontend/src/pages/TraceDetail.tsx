@@ -62,7 +62,7 @@ export function TraceDetail() {
                 {trace.items.map((item) => (
                   <div key={item.id}>
                     <Link href={`/items/${item.id}?from=${from}`}>{item.title}</Link>
-                    <span>{item.wasInserted ? "新写入" : "复用已有情报"} · {item.source}</span>
+                    <span>{item.wasInserted ? "新写入" : "复用已有情报"} · {item.source}{item.isInvalid ? " · 已标记无效" : ""}</span>
                   </div>
                 ))}
               </div>

@@ -1,5 +1,8 @@
 import json
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
+from croniter import croniter
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -7,11 +10,18 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.models import Subscription
 from app.schemas import SubscriptionPayload, SubscriptionResponse
+from app.services.scheduler import refresh_subscription_job
 
 router = APIRouter(prefix="/api/subscriptions", tags=["subscriptions"])
 
 
 def serialize_subscription(record: Subscription) -> SubscriptionResponse:
+    next_run_at = None
+    if record.enabled:
+        next_run_at = croniter(
+            record.schedule,
+            datetime.now(ZoneInfo("Asia/Shanghai")),
+        ).get_next(datetime)
     return SubscriptionResponse(
         id=record.id,
         name=record.name,
@@ -21,7 +31,7 @@ def serialize_subscription(record: Subscription) -> SubscriptionResponse:
         prompt=record.prompt,
         enabled=record.enabled,
         last_run_at=record.last_run_at,
-        next_run_at=record.next_run_at,
+        next_run_at=next_run_at,
         created_at=record.created_at,
         updated_at=record.updated_at,
     )
@@ -49,6 +59,7 @@ def create_subscription(
     db.add(record)
     db.commit()
     db.refresh(record)
+    refresh_subscription_job(record.id)
     return serialize_subscription(record)
 
 
@@ -79,6 +90,7 @@ def update_subscription(
     record.enabled = payload.enabled
     db.commit()
     db.refresh(record)
+    refresh_subscription_job(record.id)
     return serialize_subscription(record)
 
 
@@ -88,7 +100,9 @@ def delete_subscription(
     db: Session = Depends(get_db),
 ) -> Response:
     record = get_subscription_or_404(db, subscription_id)
+    record_id = record.id
     db.delete(record)
     db.commit()
+    refresh_subscription_job(record_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 

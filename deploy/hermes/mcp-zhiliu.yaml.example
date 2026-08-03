@@ -5,5 +5,7 @@ mcp_servers:
       Authorization: "Bearer ${ZHILIU_MCP_TOKEN}"
     tools:
       include:
+        - zhiliu_begin_task
         - zhiliu_publish
+        - zhiliu_report_failure
         - zhiliu_create_monitor

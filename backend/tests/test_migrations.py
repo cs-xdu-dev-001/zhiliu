@@ -47,6 +47,11 @@ def test_empty_database_is_upgraded_to_traceable_schema(tmp_path: Path) -> None:
         for foreign_key in publication_foreign_keys
     )
     assert "alembic_version" in inspector.get_table_names()
+    task_columns = {column["name"] for column in inspector.get_columns("task_runs")}
+    assert {"trace_id", "origin", "topic", "request_summary", "stage", "result_summary"} <= task_columns
+    item_columns = {column["name"] for column in inspector.get_columns("intelligence_items")}
+    assert {"is_invalid", "merged_into_id"} <= item_columns
+    assert "item_revisions" in inspector.get_table_names()
 
 
 def test_existing_database_keeps_data_during_upgrade(tmp_path: Path) -> None:

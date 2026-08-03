@@ -17,21 +17,29 @@ export function ItemCard({
   compact = false,
   busy = false,
   detailHref = `/items/${item.id}`,
+  selectable = false,
+  selected = false,
+  onSelect,
 }: {
   item: IntelligenceItem;
   onChange?: (patch: Partial<Pick<IntelligenceItem, "isRead" | "isSaved" | "isIgnored">>) => void;
   compact?: boolean;
   busy?: boolean;
   detailHref?: string;
+  selectable?: boolean;
+  selected?: boolean;
+  onSelect?: (selected: boolean) => void;
 }) {
   const date = item.publishedAt ?? item.createdAt;
   const importance = Math.round(item.importance * 100);
   const priority = importanceLabel(item.importance);
   return (
-    <article className={`item-card ${item.isRead ? "read" : ""} ${compact ? "compact" : ""}`}>
+    <article className={`item-card ${item.isRead ? "read" : ""} ${compact ? "compact" : ""} ${selected ? "selected" : ""}`}>
+      {selectable && <label className="item-select-control"><input type="checkbox" checked={selected} disabled={busy} onChange={(event) => onSelect?.(event.target.checked)} aria-label={`选择${item.title}`} /><span>{selected ? "已选择" : "选择"}</span></label>}
       <Link className="item-card-link" href={detailHref}>
         <div className="item-meta">
           <span className={`kind-tag ${item.kind}`}>{kindLabels[item.kind]}</span>
+          {item.mergedIntoId !== null ? <span className="invalid-tag">已合并</span> : item.isInvalid && <span className="invalid-tag">无效</span>}
           <span>{item.source}</span>
           <time dateTime={date}>{new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric" }).format(new Date(date))}</time>
           {item.isRead && <span className="read-state">已读</span>}

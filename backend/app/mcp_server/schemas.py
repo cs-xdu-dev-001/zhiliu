@@ -74,7 +74,33 @@ class PublishReceipt(McpModel):
     item_count: int
     skipped_count: int
     briefing_id: int | None
+    task_run_id: int | None
+    message: str
+    trace_url: str | None = None
     created_at: datetime
+    duplicate: bool = False
+
+
+class TaskStartPayload(McpModel):
+    trace_id: str = Field(min_length=8, max_length=160)
+    hermes_run_id: str | None = Field(default=None, max_length=255)
+    topic: str = Field(min_length=1, max_length=200)
+    kind: IntelligenceKind
+    request_summary: str = Field(min_length=1, max_length=1000)
+
+
+class TaskFailurePayload(McpModel):
+    trace_id: str = Field(min_length=8, max_length=160)
+    hermes_run_id: str | None = Field(default=None, max_length=255)
+    error_message: str = Field(min_length=1, max_length=1000)
+
+
+class TaskFeedbackReceipt(McpModel):
+    task_run_id: int
+    trace_id: str
+    status: Literal["running", "success", "failed"]
+    stage: Literal["processing", "completed", "failed"]
+    message: str
     duplicate: bool = False
 
 

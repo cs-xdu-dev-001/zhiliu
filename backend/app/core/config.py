@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     hermes_timeout_seconds: int = 180
     integration_secret_key: str = "development-integration-secret-key-32"
     zhiliu_mcp_token: str = "development-zhiliu-mcp-token-change-me"
+    public_base_url: str = ""
 
     @model_validator(mode="after")
     def validate_production_secrets(self) -> "Settings":

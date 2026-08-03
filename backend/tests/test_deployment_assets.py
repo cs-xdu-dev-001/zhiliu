@@ -18,6 +18,8 @@ def test_hermes_assets_use_authenticated_local_mcp() -> None:
     assert "http://127.0.0.1:8080/api/mcp" in config
     assert 'Authorization: "Bearer ${ZHILIU_MCP_TOKEN}"' in config
     assert "zhiliu_publish" in config
+    assert "zhiliu_begin_task" in config
+    assert "zhiliu_report_failure" in config
     assert "zhiliu_create_monitor" in config
 
     skill = read("deploy/hermes/skills/zhiliu-publisher/SKILL.md")
@@ -26,6 +28,7 @@ def test_hermes_assets_use_authenticated_local_mcp() -> None:
     assert "微信用户ID" in skill
     assert "traceId" in skill
     assert "重试" in skill
+    assert "traceUrl" in skill
 
 
 def test_nginx_has_dedicated_streaming_mcp_proxy() -> None:

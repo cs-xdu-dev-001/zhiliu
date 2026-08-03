@@ -18,6 +18,8 @@ const item = {
   isRead: true,
   isSaved: false,
   isIgnored: false,
+  isInvalid: false,
+  mergedIntoId: null,
   createdAt: "2026-08-01T00:00:00Z",
 };
 
@@ -54,4 +56,10 @@ it("快捷操作位于详情链接之外", () => {
   expect(screen.getByRole("link", { name: /Agent框架发布新版本/ })).not.toContainElement(
     screen.getByRole("button", { name: "收藏" }),
   );
+});
+
+it("批量模式提供带标题的选择框", () => {
+  render(<ItemCard item={item} selectable selected={false} onSelect={vi.fn()} />);
+
+  expect(screen.getByRole("checkbox", { name: "选择Agent框架发布新版本" })).toBeVisible();
 });

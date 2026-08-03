@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from croniter import croniter
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -65,6 +65,46 @@ class ItemStateUpdate(ApiModel):
     is_ignored: bool | None = None
 
 
+class ItemContentUpdate(ApiModel):
+    title: str = Field(min_length=1, max_length=300)
+    summary: str = Field(min_length=1, max_length=5000)
+    kind: IntelligenceKind
+
+
+class ItemValidityUpdate(ApiModel):
+    invalid: bool
+
+
+BulkItemAction = Literal["read", "unread", "save", "unsave", "ignore", "unignore", "invalidate", "restore"]
+
+
+class ItemBulkUpdate(ApiModel):
+    ids: list[int] = Field(min_length=1, max_length=100)
+    action: BulkItemAction
+
+    @field_validator("ids")
+    @classmethod
+    def clean_ids(cls, value: list[int]) -> list[int]:
+        if any(item_id <= 0 for item_id in value):
+            raise ValueError("情报ID必须为正整数")
+        return list(dict.fromkeys(value))
+
+
+class ItemBulkSkip(ApiModel):
+    id: int
+    reason: str
+
+
+class ItemBulkUpdateResponse(ApiModel):
+    requested: int
+    updated: int
+    skipped: list[ItemBulkSkip]
+
+
+class ItemMergeRequest(ApiModel):
+    target_id: int = Field(gt=0)
+
+
 class IntelligenceItemResponse(ApiModel):
     id: int
     subscription_id: int
@@ -80,7 +120,38 @@ class IntelligenceItemResponse(ApiModel):
     is_read: bool
     is_saved: bool
     is_ignored: bool
+    is_invalid: bool
+    merged_into_id: int | None
     created_at: datetime
+
+
+class ItemRevisionResponse(ApiModel):
+    id: int
+    action: str
+    before: dict[str, Any]
+    after: dict[str, Any]
+    created_at: datetime
+
+
+class MergedItemResponse(ApiModel):
+    id: int
+    title: str
+
+
+class MergeCandidateResponse(ApiModel):
+    id: int
+    title: str
+    summary: str
+    source: str
+    url: str
+    similarity: float
+
+
+class MergeResultResponse(ApiModel):
+    source_id: int
+    target_id: int
+    moved_links: int
+    removed_duplicates: int
 
 
 class PublicationRecordResponse(ApiModel):
@@ -100,6 +171,8 @@ class PublicationRecordResponse(ApiModel):
 class ItemDetailResponse(IntelligenceItemResponse):
     publications: list[PublicationRecordResponse]
     trace_available: bool
+    revisions: list[ItemRevisionResponse]
+    merged_into: MergedItemResponse | None
 
 
 class ItemPage(ApiModel):
@@ -139,6 +212,7 @@ class SourceItemResponse(ApiModel):
     url: str
     ordinal: int
     was_inserted: bool
+    is_invalid: bool = False
 
 
 class BriefingDetailResponse(BriefingResponse):
@@ -194,17 +268,27 @@ class DashboardResponse(ApiModel):
     failed_runs: int
     top_items: list[IntelligenceItemResponse]
     latest_briefing: BriefingResponse | None
+    recent_runs: list["TaskRunResponse"]
 
 
 class TaskRunResponse(ApiModel):
     id: int
     subscription_id: int
     hermes_run_id: str | None
+    trace_id: str | None = None
+    origin: str = "subscription-hermes"
+    topic: str | None = None
+    request_summary: str | None = None
     status: str
+    stage: str = "accepted"
+    result_summary: str | None = None
     started_at: datetime
     finished_at: datetime | None
     duration_ms: int | None
     error_message: str | None
+    subscription_name: str | None = None
+    publication_id: int | None = None
+    briefing_id: int | None = None
 
 
 class TaskRunPage(ApiModel):
@@ -212,4 +296,7 @@ class TaskRunPage(ApiModel):
     total: int
     limit: int
     offset: int
+
+
+DashboardResponse.model_rebuild()
 

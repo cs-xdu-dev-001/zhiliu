@@ -5,7 +5,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.mcp_server.schemas import PublishPayload
+from app.mcp_server.schemas import TaskFailurePayload, TaskStartPayload, PublishPayload
 from app.mcp_server.service import (
     AUTO_PROMPT,
     AUTO_SCHEDULE,
@@ -13,8 +13,10 @@ from app.mcp_server.service import (
     PublicationConflict,
     PublicationFailure,
     PublicationService,
+    TaskFeedbackService,
 )
-from app.models import Briefing, HermesPublication, IntelligenceItem, PublicationItem, Subscription
+from app.models import Briefing, HermesPublication, IntelligenceItem, PublicationItem, Subscription, TaskRun
+from app.services.run_service import item_fingerprint
 
 
 def publish_payload(**changes) -> PublishPayload:
@@ -40,6 +42,85 @@ def publish_payload(**changes) -> PublishPayload:
     }
     data.update(deepcopy(changes))
     return PublishPayload.model_validate(data)
+
+
+def test_weixin_task_moves_from_processing_to_completed(db_session: Session) -> None:
+    feedback = TaskFeedbackService(db_session, public_base_url="https://zhiliu.example")
+    started = feedback.begin(
+        TaskStartPayload(
+            traceId="trace-agent-20260802",
+            hermesRunId="hermes-run-agent-1",
+            topic="Agent更新",
+            kind="news",
+            requestSummary="整理后放进知流",
+        )
+    )
+
+    assert started.status == "running"
+    assert started.stage == "processing"
+    task = db_session.get(TaskRun, started.task_run_id)
+    assert task.origin == "weixin-hermes"
+
+    receipt = PublicationService(
+        db_session,
+        public_base_url="https://zhiliu.example",
+    ).publish(publish_payload())
+    db_session.refresh(task)
+
+    assert task.status == "success"
+    assert task.stage == "completed"
+    assert task.finished_at is not None
+    assert task.result_summary == "新增1条情报，复用0条，生成报告《微信整理 · Agent更新简报》"
+    assert receipt.task_run_id == task.id
+    assert receipt.trace_url == f"https://zhiliu.example/traces/{receipt.receipt_id}"
+    assert receipt.message == task.result_summary
+    publication = db_session.get(HermesPublication, receipt.receipt_id)
+    assert publication.task_run_id == task.id
+    repeated = feedback.begin(
+        TaskStartPayload(
+            traceId="trace-agent-20260802",
+            hermesRunId="hermes-run-agent-1",
+            topic="Agent更新",
+            kind="news",
+            requestSummary="整理后放进知流",
+        )
+    )
+    assert repeated.status == "success"
+    assert repeated.stage == "completed"
+    assert repeated.duplicate is True
+
+
+def test_weixin_task_failure_is_visible_and_idempotent(db_session: Session) -> None:
+    feedback = TaskFeedbackService(db_session)
+    started = feedback.begin(
+        TaskStartPayload(
+            traceId="trace-failed-20260802",
+            topic="失败任务",
+            kind="paper",
+            requestSummary="检索论文后放进知流",
+        )
+    )
+    repeated = feedback.begin(
+        TaskStartPayload(
+            traceId="trace-failed-20260802",
+            topic="失败任务",
+            kind="paper",
+            requestSummary="检索论文后放进知流",
+        )
+    )
+    failed = feedback.fail(
+        TaskFailurePayload(
+            traceId="trace-failed-20260802",
+            errorMessage="来源网站暂时不可达",
+        )
+    )
+
+    assert repeated.task_run_id == started.task_run_id
+    assert repeated.duplicate is True
+    assert failed.status == "failed"
+    task = db_session.get(TaskRun, started.task_run_id)
+    assert task.stage == "failed"
+    assert task.error_message == "来源网站暂时不可达"
 
 
 def test_publish_persists_visible_content_atomically(db_session: Session) -> None:
@@ -128,6 +209,40 @@ def test_existing_item_is_counted_as_skipped(db_session: Session) -> None:
     assert len(links) == 2
     assert links[0].item_id == links[1].item_id
     assert links[1].was_inserted is False
+
+
+def test_existing_merged_item_resolves_to_retained_target(db_session: Session) -> None:
+    service = PublicationService(db_session)
+    service.publish(publish_payload(briefing=None))
+    source = db_session.scalar(select(IntelligenceItem))
+    target = IntelligenceItem(
+        subscription_id=source.subscription_id,
+        kind="news",
+        title="Agent框架保留版本",
+        summary="保留记录",
+        url="https://example.com/agent-canonical",
+        source="Example · 微信Hermes",
+        keywords_json="[]",
+        fingerprint=item_fingerprint("Agent框架保留版本", "https://example.com/agent-canonical"),
+    )
+    db_session.add(target)
+    db_session.flush()
+    source.is_invalid = True
+    source.merged_into_id = target.id
+    db_session.commit()
+
+    receipt = service.publish(publish_payload(
+        idempotencyKey="merged-item-republish",
+        traceId="trace-merged-item-republish",
+        briefing=None,
+    ))
+    link = db_session.scalar(
+        select(PublicationItem).where(PublicationItem.publication_id == receipt.receipt_id)
+    )
+
+    assert link.item_id == target.id
+    assert receipt.item_count == 0
+    assert receipt.skipped_count == 1
 
 
 def test_briefing_counts_all_linked_items_including_reused(

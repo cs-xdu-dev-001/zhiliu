@@ -25,7 +25,31 @@ export interface IntelligenceItem {
   isRead: boolean;
   isSaved: boolean;
   isIgnored: boolean;
+  isInvalid: boolean;
+  mergedIntoId: number | null;
   createdAt: string;
+}
+
+export interface ItemRevision {
+  id: number;
+  action: "edited" | "invalidated" | "restored" | "merged" | "merge_target";
+  before: Record<string, unknown> | null;
+  after: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export interface MergedItem {
+  id: number;
+  title: string;
+}
+
+export interface MergeCandidate {
+  id: number;
+  title: string;
+  summary: string;
+  source: string;
+  url: string;
+  similarity: number;
 }
 
 export interface PublicationRecord {
@@ -45,6 +69,8 @@ export interface PublicationRecord {
 export interface IntelligenceItemDetail extends IntelligenceItem {
   publications: PublicationRecord[];
   traceAvailable: boolean;
+  revisions: ItemRevision[];
+  mergedInto: MergedItem | null;
 }
 
 export interface ItemPage {
@@ -74,6 +100,15 @@ export interface SourceItem {
   url: string;
   ordinal: number;
   wasInserted: boolean;
+  isInvalid: boolean;
+}
+
+export type BulkItemAction = "read" | "unread" | "save" | "unsave" | "ignore" | "unignore" | "invalidate" | "restore";
+
+export interface ItemBulkResult {
+  requested: number;
+  updated: number;
+  skipped: Array<{ id: number; reason: string }>;
 }
 
 export interface PublicationSummary {
@@ -110,6 +145,8 @@ export interface PublicationTrace {
 export interface BriefingPage {
   items: Briefing[];
   total: number;
+  limit: number;
+  offset: number;
 }
 
 export interface Subscription {
@@ -132,16 +169,27 @@ export interface TaskRun {
   id: number;
   subscriptionId: number;
   hermesRunId: string | null;
+  traceId: string | null;
+  origin: "weixin-hermes" | "subscription-hermes";
+  topic: string | null;
+  requestSummary: string | null;
   status: "queued" | "running" | "success" | "failed";
+  stage: "accepted" | "processing" | "publishing" | "completed" | "failed";
+  resultSummary: string | null;
   startedAt: string;
   finishedAt: string | null;
   durationMs: number | null;
   errorMessage: string | null;
+  subscriptionName: string | null;
+  publicationId: number | null;
+  briefingId: number | null;
 }
 
 export interface TaskRunPage {
   items: TaskRun[];
   total: number;
+  limit: number;
+  offset: number;
 }
 
 export interface Dashboard {
@@ -151,5 +199,6 @@ export interface Dashboard {
   failedRuns: number;
   topItems: IntelligenceItem[];
   latestBriefing: Briefing | null;
+  recentRuns: TaskRun[];
 }
 

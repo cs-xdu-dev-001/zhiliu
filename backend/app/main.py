@@ -32,6 +32,7 @@ def create_app(
     mcp_server, mcp_asgi = build_mcp_asgi(
         runtime_settings.zhiliu_mcp_token,
         mcp_session_factory,
+        public_base_url=runtime_settings.public_base_url,
     )
 
     @asynccontextmanager

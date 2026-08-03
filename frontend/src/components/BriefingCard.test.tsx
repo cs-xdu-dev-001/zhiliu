@@ -16,5 +16,5 @@ it("展示标题、纯文本摘要和详情链接", () => {
 
   expect(screen.getByRole("link", { name: /微信整理 · 今日AI热点简报/ })).toHaveAttribute("href", "/reports/2?from=%2Freports");
   expect(screen.getByText("第一段。 第二段包含更完整的分析。")).toHaveClass("briefing-summary");
-  expect(screen.getByText("3条情报")).toBeVisible();
+  expect(screen.getByText("引用3条情报")).toBeVisible();
 });

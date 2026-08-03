@@ -1,28 +1,54 @@
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, CheckCircle2, CircleDashed, Clock3, XCircle } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react";
+import { useEffect } from "react";
 import { Link, useSearchParams } from "wouter";
 
 import { api } from "../api";
 import { EmptyState } from "../components/EmptyState";
-import type { Subscription, TaskRunPage } from "../types";
+import { TaskRunCard } from "../components/TaskRunCard";
+import type { TaskRunPage } from "../types";
 
-const statusMeta = {
-  queued: { label: "已排队", icon: CircleDashed }, running: { label: "执行中", icon: Clock3 }, success: { label: "已完成", icon: CheckCircle2 }, failed: { label: "失败", icon: XCircle },
-};
+const PAGE_SIZE = 20;
 
 export function Tasks() {
-  const [searchParams] = useSearchParams();
-  const runs = useQuery({ queryKey: ["runs"], queryFn: () => api.get<TaskRunPage>("/api/runs"), refetchInterval: 5000 });
-  const subscriptions = useQuery({ queryKey: ["subscriptions"], queryFn: () => api.get<Subscription[]>("/api/subscriptions") });
-  const names = new Map(subscriptions.data?.map((item) => [item.id, item.name]));
+  const [searchParams, setSearchParams] = useSearchParams();
   const status = searchParams.get("status");
-  const visibleRuns = status === "failed"
-    ? runs.data?.items.filter((run) => run.status === "failed")
-    : runs.data?.items;
+  const rawPage = Number(searchParams.get("page") ?? "1");
+  const page = Number.isSafeInteger(rawPage) && rawPage > 0 ? rawPage : 1;
+  const failedOnly = status === "failed";
+  const queryParams = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String((page - 1) * PAGE_SIZE) });
+  if (failedOnly) queryParams.set("status", "failed");
+  const runs = useQuery({
+    queryKey: ["runs", failedOnly ? "failed" : "all", page],
+    queryFn: () => api.get<TaskRunPage>(`/api/runs?${queryParams.toString()}`),
+    refetchInterval: 5000,
+  });
+  const totalPages = Math.max(1, Math.ceil((runs.data?.total ?? 0) / PAGE_SIZE));
+  useEffect(() => {
+    if (!runs.data || page <= totalPages) return;
+    const params = new URLSearchParams();
+    if (failedOnly) params.set("status", "failed");
+    if (totalPages > 1) params.set("page", String(totalPages));
+    setSearchParams(params, { replace: true });
+  }, [failedOnly, page, runs.data, setSearchParams, totalPages]);
+
+  function pageHref(nextPage: number) {
+    const params = new URLSearchParams();
+    if (failedOnly) params.set("status", "failed");
+    if (nextPage > 1) params.set("page", String(nextPage));
+    return `/tasks${params.size ? `?${params.toString()}` : ""}`;
+  }
+
   return <section className="stack-lg">
     <div className="settings-toolbar"><Link className="secondary-link" href="/settings"><ArrowLeft size={17} />返回订阅</Link><span className="auto-refresh">每5秒更新</span></div>
+    <nav className="segmented task-filters" aria-label="任务筛选">
+      <Link className={!failedOnly ? "active" : ""} href="/tasks">全部任务</Link>
+      <Link className={failedOnly ? "active" : ""} href="/tasks?status=failed">仅失败</Link>
+    </nav>
     {runs.isPending && <div className="list-skeleton"><i /><i /><i /></div>}
-    {visibleRuns?.length === 0 && <EmptyState title={status === "failed" ? "没有失败任务" : "还没有任务记录"} />}
-    <div className="task-list">{visibleRuns?.map((run) => { const meta = statusMeta[run.status]; const Icon = meta.icon; return <article className={`task-row ${run.status}`} key={run.id}><Icon size={19} /><div><strong>{names.get(run.subscriptionId) ?? `订阅 #${run.subscriptionId}`}</strong><span>{new Date(run.startedAt).toLocaleString("zh-CN")} {run.durationMs !== null && `· ${(run.durationMs / 1000).toFixed(1)}s`}</span>{run.errorMessage && <p>{run.errorMessage}</p>}</div><span className="task-status">{meta.label}</span></article>; })}</div>
+    {runs.isError && <div className="inline-error" role="alert">任务记录加载失败。<button onClick={() => runs.refetch()}>重新加载</button></div>}
+    {runs.data?.items.length === 0 && <EmptyState title={failedOnly ? "没有失败任务" : "还没有任务记录"} />}
+    <div className="task-list task-list-full">{runs.data?.items.map((run) => <TaskRunCard key={run.id} run={run} />)}</div>
+    {runs.data && runs.data.total > PAGE_SIZE && <nav className="pagination" aria-label="任务分页"><Link aria-disabled={page <= 1} className={page <= 1 ? "disabled" : ""} href={pageHref(Math.max(1, page - 1))}><ChevronLeft size={17} />上一页</Link><span>第{page}/{totalPages}页</span><Link aria-disabled={page >= totalPages} className={page >= totalPages ? "disabled" : ""} href={pageHref(Math.min(totalPages, page + 1))}>下一页<ChevronRight size={17} /></Link></nav>}
   </section>;
 }

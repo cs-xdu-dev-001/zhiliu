@@ -69,7 +69,7 @@ Hermes必须只监听`127.0.0.1:8642`，不要把8642端口开放到公网。知
 
 ## 微信Hermes写入知流
 
-这条链路由Hermes理解微信消息、完成检索与整理，再通过知流MCP写入情报、简报或长期监测。无需固定命令前缀。
+这条链路由Hermes理解微信消息，先向知流登记处理任务，再完成检索与整理，最后通过知流MCP写入情报、简报或长期监测。无需固定命令前缀。
 
 先生成独立Token，并分别保存到知流和Hermes环境文件。若已经配置，除非要轮换Token，否则不要重复执行：
 
@@ -88,6 +88,8 @@ unset ZHILIU_TOKEN
 
 `ZHILIU_MCP_TOKEN`用于Hermes调用知流；`API_SERVER_KEY`用于知流调用Hermes，方向相反且必须不同。不要在终端、日志或聊天中输出真实密钥。
 
+在知流`.env`中配置`PUBLIC_BASE_URL=https://zhiliu.academicedu.me`，MCP成功回执才会包含可从微信直接打开的完整处理链路地址。该值不是密钥。
+
 把`deploy/hermes/mcp-zhiliu.yaml.example`中的`mcp_servers.zhiliu`合并到现有`~/.hermes/config.yaml`，不要覆盖原文件。然后安装自然触发skill并重启：
 
 ```bash
@@ -101,9 +103,9 @@ hermes mcp list
 hermes skills list
 ```
 
-配置中的`http://127.0.0.1:8080/api/mcp`适用于Hermes和知流部署在同一台服务器、Web仅绑定本机8080端口的情况。验收时可直接在微信发送：“请检索今天最重要的三条Agent动态，整理好以后放进知流。”Hermes只有在MCP工具返回成功后才应确认写入；随后在知流“情报”和“报告”页核对内容与原始来源。
+配置中的`http://127.0.0.1:8080/api/mcp`适用于Hermes和知流部署在同一台服务器、Web仅绑定本机8080端口的情况。验收时可直接在微信发送：“请检索今天最重要的三条Agent动态，整理好以后放进知流。”Hermes先调用`zhiliu_begin_task`登记处理中状态，完成后调用`zhiliu_publish`；任一步失败则调用`zhiliu_report_failure`。只有发布工具返回成功后才应确认写入，并把回执中的结果摘要和`traceUrl`回复给用户。
 
-`zhiliu_publish`要求Hermes为每次微信指令生成8至160字符的稳定`traceId`，同一次重试必须复用；能取得真实任务ID时另传`hermesRunId`，不能取得时省略，不得伪造。知流只保存脱敏后的`requestSummary`，不接收微信用户ID、群ID、昵称或完整聊天记录。写入成功后可从报告“来源情报”或情报“写入记录”进入完整链路页。
+三个任务工具必须复用同一个8至160字符的稳定`traceId`，同一次重试也必须复用；能取得真实任务ID时另传`hermesRunId`，不能取得时省略，不得伪造。知流只保存脱敏后的`requestSummary`，不接收微信用户ID、群ID、昵称或完整聊天记录。首页“最近处理动态”和任务详情会实时展示受理、处理、写入、完成或失败状态。
 
 ## VPS部署
 

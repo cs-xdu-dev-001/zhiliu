@@ -19,7 +19,7 @@ export function BriefingCard({
         <div className="briefing-meta">
           <span className={`kind-tag ${briefing.kind}`}>{kindLabels[briefing.kind]}</span>
           <time dateTime={briefing.createdAt}>{new Date(briefing.createdAt).toLocaleDateString("zh-CN")}</time>
-          <span>{briefing.itemCount}条情报</span>
+          <span>引用{briefing.itemCount}条情报</span>
         </div>
         <h2>{briefing.title}</h2>
         <p className="briefing-summary">{summary}</p>

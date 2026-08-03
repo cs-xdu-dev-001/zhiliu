@@ -10,6 +10,7 @@ services:
       DATABASE_URL: sqlite:////data/zhiliu.db
       INTEGRATION_SECRET_KEY: ${INTEGRATION_SECRET_KEY:-replace-with-at-least-32-random-characters}
       ZHILIU_MCP_TOKEN: ${ZHILIU_MCP_TOKEN:-replace-with-separate-32-character-random-token}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
       HERMES_BASE_URL: ${HERMES_BASE_URL:-http://127.0.0.1:8642}
       HERMES_API_KEY: ${HERMES_API_KEY:-}
       HERMES_TIMEOUT_SECONDS: ${HERMES_TIMEOUT_SECONDS:-180}

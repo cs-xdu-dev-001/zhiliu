@@ -57,6 +57,12 @@ class IntelligenceItem(Base):
     is_read: Mapped[bool] = mapped_column(Boolean, default=False)
     is_saved: Mapped[bool] = mapped_column(Boolean, default=False)
     is_ignored: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_invalid: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    merged_into_id: Mapped[int | None] = mapped_column(
+        ForeignKey("intelligence_items.id"),
+        nullable=True,
+        index=True,
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     subscription: Mapped[Subscription] = relationship(back_populates="items")
@@ -64,6 +70,31 @@ class IntelligenceItem(Base):
         back_populates="item",
         cascade="all, delete-orphan",
     )
+    revisions: Mapped[list["ItemRevision"]] = relationship(
+        back_populates="item",
+        cascade="all, delete-orphan",
+        order_by="ItemRevision.created_at.desc()",
+    )
+    merged_into: Mapped["IntelligenceItem | None"] = relationship(
+        remote_side="IntelligenceItem.id",
+        foreign_keys=[merged_into_id],
+    )
+
+
+class ItemRevision(Base):
+    __tablename__ = "item_revisions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    item_id: Mapped[int] = mapped_column(
+        ForeignKey("intelligence_items.id", ondelete="CASCADE"),
+        index=True,
+    )
+    action: Mapped[str] = mapped_column(String(40), index=True)
+    before_json: Mapped[str] = mapped_column(Text, default="{}")
+    after_json: Mapped[str] = mapped_column(Text, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+    item: Mapped[IntelligenceItem] = relationship(back_populates="revisions")
 
 
 class Briefing(Base):
@@ -132,8 +163,14 @@ class TaskRun(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     subscription_id: Mapped[int] = mapped_column(ForeignKey("subscriptions.id"), index=True)
-    hermes_run_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    hermes_run_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    trace_id: Mapped[str | None] = mapped_column(String(160), nullable=True, unique=True, index=True)
+    origin: Mapped[str] = mapped_column(String(40), default="subscription-hermes")
+    topic: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    request_summary: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     status: Mapped[str] = mapped_column(String(30), default="queued", index=True)
+    stage: Mapped[str] = mapped_column(String(40), default="accepted")
+    result_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)

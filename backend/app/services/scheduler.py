@@ -89,6 +89,7 @@ async def process_queued_tasks() -> None:
                 client = HermesIntegrationService(db, settings).resolve_client(task.subscription, DemoHermesClient)
             except (HermesUnavailable, SecretDecryptionError) as exc:
                 task.status = "failed"
+                task.stage = "failed"
                 task.error_message = str(exc)[:2000]
                 task.finished_at = datetime.now(timezone.utc)
                 task.duration_ms = 0
@@ -111,15 +112,46 @@ def refresh_subscription_jobs() -> None:
     with SessionLocal() as db:
         subscriptions = db.scalars(select(Subscription).where(Subscription.enabled.is_(True))).all()
         for subscription in subscriptions:
+            try:
+                trigger = CronTrigger.from_crontab(subscription.schedule, timezone="Asia/Shanghai")
+            except ValueError:
+                continue
             _scheduler.add_job(
                 queue_subscription_by_id,
-                CronTrigger.from_crontab(subscription.schedule, timezone="Asia/Shanghai"),
+                trigger,
                 args=[subscription.id],
                 id=f"subscription:{subscription.id}",
                 replace_existing=True,
                 max_instances=1,
                 coalesce=True,
             )
+
+
+def refresh_subscription_job(subscription_id: int) -> None:
+    if _scheduler is None:
+        return
+    job_id = f"subscription:{subscription_id}"
+    with SessionLocal() as db:
+        subscription = db.get(Subscription, subscription_id)
+        if subscription is None or not subscription.enabled:
+            if _scheduler.get_job(job_id) is not None:
+                _scheduler.remove_job(job_id)
+            return
+        try:
+            trigger = CronTrigger.from_crontab(subscription.schedule, timezone="Asia/Shanghai")
+        except ValueError:
+            if _scheduler.get_job(job_id) is not None:
+                _scheduler.remove_job(job_id)
+            return
+        _scheduler.add_job(
+            queue_subscription_by_id,
+            trigger,
+            args=[subscription.id],
+            id=job_id,
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+        )
 
 
 def start_scheduler() -> AsyncIOScheduler:

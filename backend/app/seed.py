@@ -102,10 +102,10 @@ def seed_database(
     db.add_all(briefings)
     db.flush()
     tasks = [
-            TaskRun(subscription_id=subscriptions[0].id, hermes_run_id="demo-hermes-news", status="success", finished_at=now, duration_ms=8420),
-            TaskRun(subscription_id=subscriptions[1].id, hermes_run_id="demo-hermes-paper", status="success", finished_at=now, duration_ms=12130),
-            TaskRun(subscription_id=subscriptions[2].id, status="failed", finished_at=now, duration_ms=3100, error_message="演示：来源暂时不可用"),
-            TaskRun(subscription_id=subscriptions[0].id, status="success", finished_at=now, duration_ms=7790),
+            TaskRun(subscription_id=subscriptions[0].id, hermes_run_id="demo-hermes-news", origin="subscription-hermes", topic="AI每日热点", request_summary="演示：检索并整理过去24小时重要AI动态", status="success", stage="completed", result_summary="新增3条情报，复用0条，生成报告《AI热点日报》", finished_at=now, duration_ms=8420),
+            TaskRun(subscription_id=subscriptions[1].id, hermes_run_id="demo-hermes-paper", origin="subscription-hermes", topic="Agent论文周报", request_summary="演示：检索并整理过去7天值得阅读的Agent论文", status="success", stage="completed", result_summary="新增3条情报，复用0条，生成报告《Agent论文周报》", finished_at=now, duration_ms=12130),
+            TaskRun(subscription_id=subscriptions[2].id, origin="subscription-hermes", topic="AI工程岗位", request_summary="检索近期适合应届生的AI工程岗位", status="failed", stage="failed", finished_at=now, duration_ms=3100, error_message="演示：来源暂时不可用"),
+            TaskRun(subscription_id=subscriptions[0].id, origin="subscription-hermes", topic="AI每日热点", request_summary="检索过去24小时重要AI动态", status="success", stage="completed", result_summary="任务已完成", finished_at=now, duration_ms=7790),
     ]
     db.add_all(tasks)
     db.flush()
