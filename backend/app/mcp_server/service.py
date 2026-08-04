@@ -24,6 +24,7 @@ from app.models import (
     TaskRun,
 )
 from app.services.run_service import canonical_item, item_fingerprint, normalize_url
+from app.services.preferences import PreferenceService
 
 
 AUTO_CATEGORIES = {
@@ -111,8 +112,7 @@ class TaskFeedbackService:
         self.db.commit()
         return self._receipt(task, duplicate=False)
 
-    @staticmethod
-    def _receipt(task: TaskRun, *, duplicate: bool) -> TaskFeedbackReceipt:
+    def _receipt(self, task: TaskRun, *, duplicate: bool) -> TaskFeedbackReceipt:
         failed = task.status == "failed"
         completed = task.status == "success"
         return TaskFeedbackReceipt(
@@ -126,6 +126,9 @@ class TaskFeedbackService:
                 else task.result_summary or "任务已完成"
                 if completed
                 else "知流已受理，Hermes正在整理"
+            ),
+            task_url=(
+                f"{self.public_base_url}/tasks/{task.id}" if self.public_base_url else None
             ),
             duplicate=duplicate,
         )
@@ -206,6 +209,13 @@ class PublicationService:
     ) -> PublishReceipt:
         try:
             subscription = self._get_or_create_category(payload.kind)
+            preference_service = PreferenceService(self.db)
+            accepted_items = [
+                item
+                for item in payload.items
+                if not preference_service.filters_source(item.source, payload.kind)
+            ]
+            filtered = len(payload.items) - len(accepted_items)
             resolved_items = self._resolve_items(subscription.id, payload)
             inserted = sum(was_inserted for _, was_inserted in resolved_items)
             skipped = len(resolved_items) - inserted
@@ -220,6 +230,7 @@ class PublicationService:
                 digest,
                 inserted,
                 skipped,
+                filtered,
                 briefing.id if briefing else None,
             )
             self.db.add_all(
@@ -320,7 +331,13 @@ class PublicationService:
     ) -> list[tuple[IntelligenceItem, bool]]:
         resolved: list[tuple[IntelligenceItem, bool]] = []
         seen_item_ids: set[int] = set()
-        for item in payload.items:
+        preference_service = PreferenceService(self.db)
+        items = [
+            item
+            for item in payload.items
+            if not preference_service.filters_source(item.source, payload.kind)
+        ]
+        for item in items:
             normalized_url = normalize_url(str(item.url)).rstrip("/")
             fingerprint = item_fingerprint(item.title, normalized_url)
             existing = self.db.scalar(
@@ -347,7 +364,9 @@ class PublicationService:
                 published_at=item.published_at,
                 keywords_json=json.dumps(item.keywords, ensure_ascii=False),
                 reason=item.reason,
-                importance=item.importance,
+                importance=preference_service.adjust_importance(
+                    item.source, payload.kind, item.importance
+                ),
                 fingerprint=fingerprint,
             )
             self.db.add(record)
@@ -386,6 +405,7 @@ class PublicationService:
         digest: str,
         inserted: int,
         skipped: int,
+        filtered: int,
         briefing_id: int | None,
     ) -> HermesPublication:
         task = self.db.scalar(
@@ -401,6 +421,7 @@ class PublicationService:
             task_run_id=task.id if task else None,
             item_count=inserted,
             skipped_count=skipped,
+            filtered_count=filtered,
             topic=payload.topic,
             request_summary=payload.request_summary,
             origin="weixin-hermes",
@@ -411,6 +432,8 @@ class PublicationService:
             now = datetime.now(timezone.utc)
             report_title = self.db.get(Briefing, briefing_id).title if briefing_id else None
             summary = f"新增{inserted}条情报，复用{skipped}条"
+            if filtered:
+                summary += f"，按偏好过滤{filtered}条"
             if report_title:
                 summary += f"，生成报告《{report_title}》"
             task.hermes_run_id = payload.hermes_run_id or task.hermes_run_id
@@ -426,17 +449,31 @@ class PublicationService:
         task = self.db.get(TaskRun, publication.task_run_id) if publication.task_run_id else None
         message = task.result_summary if task and task.result_summary else (
             f"新增{publication.item_count}条情报，复用{publication.skipped_count}条"
+            + (f"，按偏好过滤{publication.filtered_count}条" if publication.filtered_count else "")
         )
         trace_path = f"/traces/{publication.id}"
+        task_path = f"/tasks/{publication.task_run_id}" if publication.task_run_id else None
+        briefing_path = f"/reports/{publication.briefing_id}" if publication.briefing_id else None
         return PublishReceipt(
             receipt_id=publication.id,
             trace_id=publication.trace_id or "",
             item_count=publication.item_count,
             skipped_count=publication.skipped_count,
+            filtered_count=publication.filtered_count,
             briefing_id=publication.briefing_id,
             task_run_id=publication.task_run_id,
             message=message,
             trace_url=f"{self.public_base_url}{trace_path}" if self.public_base_url else None,
+            task_url=(
+                f"{self.public_base_url}{task_path}"
+                if self.public_base_url and task_path
+                else None
+            ),
+            briefing_url=(
+                f"{self.public_base_url}{briefing_path}"
+                if self.public_base_url and briefing_path
+                else None
+            ),
             created_at=publication.created_at,
             duplicate=duplicate,
         )

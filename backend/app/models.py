@@ -126,6 +126,7 @@ class HermesPublication(Base):
     task_run_id: Mapped[int | None] = mapped_column(ForeignKey("task_runs.id"), nullable=True, index=True)
     item_count: Mapped[int] = mapped_column(Integer, default=0)
     skipped_count: Mapped[int] = mapped_column(Integer, default=0)
+    filtered_count: Mapped[int] = mapped_column(Integer, default=0)
     topic: Mapped[str] = mapped_column(String(200))
     request_summary: Mapped[str] = mapped_column(String(1000))
     origin: Mapped[str] = mapped_column(String(40), default="weixin-hermes")
@@ -191,6 +192,23 @@ class HermesIntegration(Base):
     last_message: Mapped[str] = mapped_column(String(500), default="尚未配置Hermes连接")
     last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     hermes_version: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+
+class HermesPreference(Base):
+    __tablename__ = "hermes_preferences"
+    __table_args__ = (
+        UniqueConstraint("scope", "effect", "value", "kind", name="uq_hermes_preferences_rule"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    scope: Mapped[str] = mapped_column(String(30), index=True)
+    effect: Mapped[str] = mapped_column(String(30), index=True)
+    value: Mapped[str] = mapped_column(String(300))
+    kind: Mapped[str] = mapped_column(String(30), default="all", index=True)
+    note: Mapped[str] = mapped_column(String(1000), default="")
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 

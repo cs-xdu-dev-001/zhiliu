@@ -58,6 +58,7 @@ def test_weixin_task_moves_from_processing_to_completed(db_session: Session) -> 
 
     assert started.status == "running"
     assert started.stage == "processing"
+    assert started.task_url == f"https://zhiliu.example/tasks/{started.task_run_id}"
     task = db_session.get(TaskRun, started.task_run_id)
     assert task.origin == "weixin-hermes"
 
@@ -73,6 +74,8 @@ def test_weixin_task_moves_from_processing_to_completed(db_session: Session) -> 
     assert task.result_summary == "新增1条情报，复用0条，生成报告《微信整理 · Agent更新简报》"
     assert receipt.task_run_id == task.id
     assert receipt.trace_url == f"https://zhiliu.example/traces/{receipt.receipt_id}"
+    assert receipt.task_url == f"https://zhiliu.example/tasks/{task.id}"
+    assert receipt.briefing_url == f"https://zhiliu.example/reports/{receipt.briefing_id}"
     assert receipt.message == task.result_summary
     publication = db_session.get(HermesPublication, receipt.receipt_id)
     assert publication.task_run_id == task.id

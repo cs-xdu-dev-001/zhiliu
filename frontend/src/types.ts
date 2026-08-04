@@ -202,3 +202,50 @@ export interface Dashboard {
   recentRuns: TaskRun[];
 }
 
+export interface SearchItemResult {
+  id: number;
+  kind: IntelligenceKind;
+  title: string;
+  summary: string;
+  source: string;
+  url: string;
+  createdAt: string;
+}
+
+export interface SearchBriefingResult {
+  id: number;
+  kind: IntelligenceKind;
+  title: string;
+  summary: string;
+  itemCount: number;
+  createdAt: string;
+}
+
+export interface SearchResponse {
+  query: string;
+  items: SearchItemResult[];
+  briefings: SearchBriefingResult[];
+  itemTotal: number;
+  briefingTotal: number;
+}
+
+export type PreferenceScope = "source" | "topic" | "output";
+export type PreferenceEffect = "prefer" | "avoid" | "instruct";
+export type PreferenceKind = "all" | IntelligenceKind;
+
+export interface HermesPreference {
+  id: number;
+  scope: PreferenceScope;
+  effect: PreferenceEffect;
+  value: string;
+  kind: PreferenceKind;
+  note: string;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PreferencePage {
+  items: HermesPreference[];
+}
+

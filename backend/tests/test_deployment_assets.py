@@ -21,6 +21,11 @@ def test_hermes_assets_use_authenticated_local_mcp() -> None:
     assert "zhiliu_begin_task" in config
     assert "zhiliu_report_failure" in config
     assert "zhiliu_create_monitor" in config
+    assert "zhiliu_search" in config
+    assert "zhiliu_get_preferences" in config
+    assert "zhiliu_save_preference" in config
+    assert "zhiliu_remove_preference" in config
+    assert "zhiliu_update_item" in config
 
     skill = read("deploy/hermes/skills/zhiliu-publisher/SKILL.md")
     assert "先完成理解、检索、核验和整理" in skill
@@ -29,6 +34,10 @@ def test_hermes_assets_use_authenticated_local_mcp() -> None:
     assert "traceId" in skill
     assert "重试" in skill
     assert "traceUrl" in skill
+    assert "taskUrl" in skill
+    assert "briefingUrl" in skill
+    assert "长期偏好" in skill
+    assert "zhiliu_search" in skill
 
 
 def test_nginx_has_dedicated_streaming_mcp_proxy() -> None:

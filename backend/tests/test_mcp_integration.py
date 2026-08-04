@@ -57,6 +57,11 @@ async def test_official_client_discovers_and_calls_zhiliu_tools(
                         "zhiliu_publish",
                         "zhiliu_report_failure",
                         "zhiliu_create_monitor",
+                        "zhiliu_search",
+                        "zhiliu_get_preferences",
+                        "zhiliu_save_preference",
+                        "zhiliu_remove_preference",
+                        "zhiliu_update_item",
                     }
                     result = await session.call_tool(
                         "zhiliu_publish",
@@ -80,6 +85,47 @@ async def test_official_client_discovers_and_calls_zhiliu_tools(
                         },
                     )
                     assert result.isError is False
+
+                    search_result = await session.call_tool(
+                        "zhiliu_search",
+                        arguments={"query": "MCP联通"},
+                    )
+                    assert search_result.isError is False
+                    assert search_result.structuredContent is not None
+                    search_items = search_result.structuredContent["results"]
+                    assert search_items[0]["title"] == "MCP联通"
+
+                    preference_result = await session.call_tool(
+                        "zhiliu_save_preference",
+                        arguments={
+                            "scope": "source",
+                            "effect": "prefer",
+                            "value": "Example",
+                        },
+                    )
+                    assert preference_result.isError is False
+                    assert preference_result.structuredContent is not None
+                    preference_id = preference_result.structuredContent["preferenceId"]
+
+                    listed = await session.call_tool("zhiliu_get_preferences", arguments={})
+                    assert listed.isError is False
+                    assert listed.structuredContent is not None
+                    assert listed.structuredContent["preferences"][0]["value"] == "Example"
+
+                    updated = await session.call_tool(
+                        "zhiliu_update_item",
+                        arguments={
+                            "itemId": search_items[0]["resultId"],
+                            "priority": "higher",
+                        },
+                    )
+                    assert updated.isError is False
+
+                    removed = await session.call_tool(
+                        "zhiliu_remove_preference",
+                        arguments={"preferenceId": preference_id},
+                    )
+                    assert removed.isError is False
 
             items_response = await http_client.get("/api/items")
 

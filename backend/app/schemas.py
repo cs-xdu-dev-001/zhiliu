@@ -254,6 +254,57 @@ class PublicationTraceResponse(ApiModel):
     briefing: TraceBriefingResponse | None
 
 
+class SearchItemResult(ApiModel):
+    id: int
+    kind: IntelligenceKind
+    title: str
+    summary: str
+    source: str
+    url: str
+    created_at: datetime
+
+
+class SearchBriefingResult(ApiModel):
+    id: int
+    kind: IntelligenceKind
+    title: str
+    summary: str
+    item_count: int
+    created_at: datetime
+
+
+class SearchResponse(ApiModel):
+    query: str
+    items: list[SearchItemResult]
+    briefings: list[SearchBriefingResult]
+    item_total: int
+    briefing_total: int
+
+
+PreferenceScope = Literal["source", "topic", "output"]
+PreferenceEffect = Literal["prefer", "avoid", "instruct"]
+PreferenceKind = Literal["all", "news", "paper", "job"]
+
+
+class PreferencePayload(ApiModel):
+    scope: PreferenceScope
+    effect: PreferenceEffect
+    value: str = Field(min_length=1, max_length=300)
+    kind: PreferenceKind = "all"
+    note: str = Field(default="", max_length=1000)
+
+
+class PreferenceResponse(PreferencePayload):
+    id: int
+    active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class PreferencePage(ApiModel):
+    items: list[PreferenceResponse]
+
+
 class BriefingPage(ApiModel):
     items: list[BriefingResponse]
     total: int

@@ -9,3 +9,8 @@ mcp_servers:
         - zhiliu_publish
         - zhiliu_report_failure
         - zhiliu_create_monitor
+        - zhiliu_search
+        - zhiliu_get_preferences
+        - zhiliu_save_preference
+        - zhiliu_remove_preference
+        - zhiliu_update_item

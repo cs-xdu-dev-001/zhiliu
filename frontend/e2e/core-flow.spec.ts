@@ -171,6 +171,28 @@ test("维护情报并保留修改记录", async ({ page }, testInfo) => {
   await capture(page, testInfo, "item-merge-dialog");
 });
 
+test("搜索知流并管理Hermes偏好", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await page.getByRole("link", { name: "搜索知流" }).click();
+  await page.getByRole("textbox", { name: "搜索情报和报告" }).fill("Agent");
+  await page.getByRole("button", { name: "搜索", exact: true }).click();
+  await expect(page).toHaveURL(/\/search\?q=Agent/);
+  await expect(page.getByText(/条结果$/)).toBeVisible();
+  await expect(page.getByRole("link", { name: /Hermes Agent增加异步Run接口/ })).toBeVisible();
+  await capture(page, testInfo, "global-search");
+
+  await page.goto("/settings");
+  await expect(page.getByRole("heading", { name: "Hermes偏好" })).toBeVisible();
+  await page.getByRole("button", { name: "新增偏好" }).click();
+  await page.getByRole("combobox", { name: "作用对象" }).selectOption("source");
+  await page.getByRole("combobox", { name: "处理方式" }).selectOption("avoid");
+  await page.getByRole("textbox", { name: "偏好内容" }).fill(`低质量来源-${testInfo.project.name}`);
+  await page.getByRole("button", { name: "保存偏好" }).click();
+  await expect(page.getByText("偏好已保存，Hermes后续整理会遵循它")).toBeVisible();
+  await expect(page.getByText(`低质量来源-${testInfo.project.name}`)).toBeVisible();
+  await capture(page, testInfo, "hermes-preferences");
+});
+
 test("网络中断后提示并自动恢复", async ({ page, context }, testInfo) => {
   await page.goto("/");
   await context.setOffline(true);

@@ -29,6 +29,7 @@ from app.schemas import (
     PublicationRecordResponse,
 )
 from app.services.run_service import item_fingerprint
+from app.services.item_maintenance import add_revision, item_snapshot
 
 router = APIRouter(prefix="/api", tags=["intelligence"])
 
@@ -52,33 +53,6 @@ def serialize_item(record: IntelligenceItem) -> IntelligenceItemResponse:
         is_invalid=record.is_invalid,
         merged_into_id=record.merged_into_id,
         created_at=record.created_at,
-    )
-
-
-def item_snapshot(record: IntelligenceItem) -> dict[str, object]:
-    return {
-        "title": record.title,
-        "summary": record.summary,
-        "kind": record.kind,
-        "isInvalid": record.is_invalid,
-        "mergedIntoId": record.merged_into_id,
-    }
-
-
-def add_revision(
-    db: Session,
-    record: IntelligenceItem,
-    action: str,
-    before: dict[str, object],
-    after: dict[str, object],
-) -> None:
-    db.add(
-        ItemRevision(
-            item_id=record.id,
-            action=action,
-            before_json=json.dumps(before, ensure_ascii=False, sort_keys=True),
-            after_json=json.dumps(after, ensure_ascii=False, sort_keys=True),
-        )
     )
 
 

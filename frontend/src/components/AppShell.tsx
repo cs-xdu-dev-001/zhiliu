@@ -1,4 +1,4 @@
-import { ArrowLeft, BookOpenText, House, ListFilter, Radio, Settings2 } from "lucide-react";
+import { ArrowLeft, BookOpenText, House, ListFilter, Radio, Search, Settings2 } from "lucide-react";
 import { useEffect } from "react";
 import { Link, Route, Switch, useLocation } from "wouter";
 import { Feed } from "../pages/Feed";
@@ -6,6 +6,7 @@ import { BriefingDetail } from "../pages/BriefingDetail";
 import { Home } from "../pages/Home";
 import { ItemDetail } from "../pages/ItemDetail";
 import { Reports } from "../pages/Reports";
+import { SearchPage } from "../pages/Search";
 import { Subscriptions } from "../pages/Subscriptions";
 import { Tasks } from "../pages/Tasks";
 import { TaskDetail } from "../pages/TaskDetail";
@@ -19,6 +20,7 @@ const pageNames: Record<string, string> = {
   "/reports": "定期报告",
   "/settings": "订阅与任务",
   "/tasks": "任务记录",
+  "/search": "搜索知流",
 };
 
 const desktopNav = [
@@ -83,9 +85,10 @@ export function AppShell() {
             ? <Link className="topbar-back" href={backHref} aria-label="返回上一列表"><ArrowLeft size={19} /><span>返回</span></Link>
             : <div className="mobile-brand"><Radio size={18} /><span>知流</span></div>}
           <h1>{title}</h1>
+          {!isDetailPage && <Link className="topbar-search" href="/search" aria-label="搜索知流" aria-current={pathname === "/search" ? "page" : undefined}><Search size={19} /></Link>}
         </header>
         <ServiceStatus />
-        <main id="main-content" tabIndex={-1} className="page-content"><Switch><Route path="/items/:id" component={ItemDetail} /><Route path="/reports/:id" component={BriefingDetail} /><Route path="/traces/:id" component={TraceDetail} /><Route path="/tasks/:id" component={TaskDetail} /><Route path="/feed" component={Feed} /><Route path="/reports" component={Reports} /><Route path="/settings" component={Subscriptions} /><Route path="/tasks" component={Tasks} /><Route path="/" component={Home} /><Route component={Home} /></Switch></main>
+        <main id="main-content" tabIndex={-1} className="page-content"><Switch><Route path="/items/:id" component={ItemDetail} /><Route path="/reports/:id" component={BriefingDetail} /><Route path="/traces/:id" component={TraceDetail} /><Route path="/tasks/:id" component={TaskDetail} /><Route path="/feed" component={Feed} /><Route path="/reports" component={Reports} /><Route path="/search" component={SearchPage} /><Route path="/settings" component={Subscriptions} /><Route path="/tasks" component={Tasks} /><Route path="/" component={Home} /><Route component={Home} /></Switch></main>
       </div>
       {!hidesBottomNav && <BottomNav />}
     </div>
