@@ -77,3 +77,17 @@ it("翻页时保留报告视图状态", async () => {
   await waitFor(() => expect(get).toHaveBeenLastCalledWith("/api/briefings?limit=20&offset=20"));
   expect(window.location.search).toBe("?page=2");
 });
+
+it("首次没有报告时引导用户从微信开始", async () => {
+  get.mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 });
+  render(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <Reports />
+    </QueryClientProvider>,
+  );
+
+  expect(await screen.findByText("还没有报告")).toBeVisible();
+  expect(screen.getByText(/在微信让Hermes/)).toBeVisible();
+  expect(screen.getByRole("link", { name: "查看示例指令" })).toHaveAttribute("href", "/");
+  expect(screen.queryByRole("button", { name: "清除筛选" })).not.toBeInTheDocument();
+});

@@ -63,3 +63,10 @@ it("批量模式提供带标题的选择框", () => {
 
   expect(screen.getByRole("checkbox", { name: "选择Agent框架发布新版本" })).toBeVisible();
 });
+
+it("拒绝不安全的原文链接", () => {
+  render(<ItemCard item={{ ...item, url: "javascript:alert(1)" }} />);
+
+  expect(screen.queryByRole("link", { name: "打开原文（新窗口）" })).not.toBeInTheDocument();
+  expect(screen.getByLabelText("原文链接不可用")).toBeVisible();
+});

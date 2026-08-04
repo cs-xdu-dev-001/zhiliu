@@ -1,6 +1,6 @@
 import { Inbox } from "lucide-react";
+import type { ReactNode } from "react";
 
-export function EmptyState({ title }: { title: string }) {
-  return <div className="empty-state"><Inbox size={24} /><p>{title}</p></div>;
+export function EmptyState({ title, description, action }: { title: string; description?: string; action?: ReactNode }) {
+  return <div className="empty-state"><Inbox size={24} /><strong>{title}</strong>{description && <p>{description}</p>}{action}</div>;
 }
-

@@ -11,6 +11,15 @@ function importanceLabel(importance: number) {
   return "低优先级";
 }
 
+function safeExternalUrl(value: string) {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "http:" || parsed.protocol === "https:" ? value : null;
+  } catch {
+    return null;
+  }
+}
+
 export function ItemCard({
   item,
   onChange,
@@ -33,6 +42,7 @@ export function ItemCard({
   const date = item.publishedAt ?? item.createdAt;
   const importance = Math.round(item.importance * 100);
   const priority = importanceLabel(item.importance);
+  const sourceUrl = safeExternalUrl(item.url);
   return (
     <article className={`item-card ${item.isRead ? "read" : ""} ${compact ? "compact" : ""} ${selected ? "selected" : ""}`}>
       {selectable && <label className="item-select-control"><input type="checkbox" checked={selected} disabled={busy} onChange={(event) => onSelect?.(event.target.checked)} aria-label={`选择${item.title}`} /><span>{selected ? "已选择" : "选择"}</span></label>}
@@ -57,7 +67,9 @@ export function ItemCard({
             <button disabled={busy} onClick={() => onChange({ isRead: !item.isRead })} aria-label={item.isRead ? "标记未读" : "标记已读"} title={item.isRead ? "标记未读" : "标记已读"}><Check size={17} /></button>
             <button disabled={busy} onClick={() => onChange({ isIgnored: true })} aria-label="忽略" title="忽略"><EyeOff size={17} /></button>
           </>}
-          <a href={item.url} target="_blank" rel="noreferrer" aria-label="打开原文（新窗口）" title="打开原文"><ExternalLink size={17} /></a>
+          {sourceUrl
+            ? <a href={sourceUrl} target="_blank" rel="noreferrer" aria-label="打开原文（新窗口）" title="打开原文"><ExternalLink size={17} /></a>
+            : <span className="unavailable" aria-label="原文链接不可用" title="原文链接不可用"><ExternalLink size={17} /></span>}
         </div>
       </div>
     </article>

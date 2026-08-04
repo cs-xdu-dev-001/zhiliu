@@ -1,10 +1,12 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import { Home } from "./Home";
 
 const { get } = vi.hoisted(() => ({ get: vi.fn() }));
+const writeText = vi.fn();
 vi.mock("../api", () => ({ api: { get } }));
 
 const dashboard = {
@@ -46,6 +48,8 @@ function renderHome() {
 }
 
 beforeEach(() => {
+  writeText.mockReset().mockResolvedValue(undefined);
+  Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
   get.mockReset().mockImplementation((path: string) => Promise.resolve(path === "/api/dashboard" ? dashboard : connectedHermes));
 });
 
@@ -79,16 +83,19 @@ it("Hermes异常时给出明确恢复入口", async () => {
   expect(screen.getByRole("link", { name: /检查Hermes连接/ })).toHaveAttribute("href", "/settings");
 });
 
-it("没有内容时仍提供下一步入口", async () => {
+it("没有内容时直接提供可复制的微信指令", async () => {
   get.mockImplementation((path: string) => Promise.resolve(path === "/api/dashboard"
     ? { ...dashboard, failedRuns: 0, topItems: [], latestBriefing: null, recentRuns: [] }
     : connectedHermes));
 
   renderHome();
 
-  expect(await screen.findByText(/没有待阅读情报/)).toBeVisible();
-  expect(screen.getByRole("link", { name: "查看全部情报" })).toHaveAttribute("href", "/feed");
-  expect(screen.getByText(/还没有简报/)).toBeVisible();
-  expect(screen.getByRole("link", { name: "查看处理进度" })).toHaveAttribute("href", "/tasks");
+  expect(await screen.findByRole("heading", { name: "从微信发出第一条知流指令" })).toBeVisible();
+  await userEvent.click(screen.getByRole("button", { name: "复制示例指令" }));
+  expect(writeText).toHaveBeenCalledWith("请检索今天AI Agent领域的重要更新，整理后写入知流，并生成一份带来源链接的简报。");
+  expect(screen.getByRole("button", { name: "已复制，去微信发送" })).toBeVisible();
+  expect(screen.getByRole("link", { name: "查看处理记录" })).toHaveAttribute("href", "/tasks");
+  expect(screen.queryByText(/没有待阅读情报/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/还没有简报/)).not.toBeInTheDocument();
   expect(screen.queryByRole("heading", { name: "需要处理" })).not.toBeInTheDocument();
 });

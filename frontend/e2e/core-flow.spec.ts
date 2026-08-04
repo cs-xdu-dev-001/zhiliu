@@ -12,6 +12,38 @@ async function capture(page: Page, testInfo: TestInfo, name: string, fullPage = 
   await page.screenshot({ path: testInfo.outputPath(`${name}.png`), fullPage });
 }
 
+test("首次使用时从微信指令开始", async ({ page, context }, testInfo) => {
+  await page.route("**/api/dashboard", (route) => route.fulfill({
+    json: {
+      unreadCount: 0,
+      savedCount: 0,
+      activeSubscriptions: 0,
+      failedRuns: 0,
+      topItems: [],
+      latestBriefing: null,
+      recentRuns: [],
+    },
+  }));
+  await page.route("**/api/integrations/hermes", (route) => route.fulfill({
+    json: {
+      baseUrl: "http://hermes:8642",
+      apiKeyConfigured: true,
+      apiKeyHint: "••••1234",
+      status: "connected",
+      message: "连接正常",
+      checkedAt: "2026-08-03T10:00:00Z",
+      version: "1.0.0",
+    },
+  }));
+  await page.goto("/");
+  await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: new URL(page.url()).origin });
+
+  await expect(page.getByRole("heading", { name: "从微信发出第一条知流指令" })).toBeVisible();
+  await page.getByRole("button", { name: "复制示例指令" }).click();
+  await expect(page.getByRole("button", { name: "已复制，去微信发送" })).toBeVisible();
+  await capture(page, testInfo, "first-use");
+});
+
 test("阅读情报并触发订阅", async ({ page }, testInfo) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "今日情报" })).toBeVisible();

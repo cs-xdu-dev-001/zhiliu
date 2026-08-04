@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight, Search, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import { useSearchParams } from "wouter";
+import { Link, useSearchParams } from "wouter";
 
 import { api } from "../api";
 import { BriefingCard } from "../components/BriefingCard";
@@ -65,6 +65,7 @@ export function Reports() {
     if (query.data && page > totalPages) setView({ page: totalPages });
   }, [page, query.data, totalPages]);
   const returnHref = `/reports${searchParams.toString() ? `?${searchParams.toString()}` : ""}`;
+  const hasFilters = Boolean(kind || period || q);
 
   function clearFilters() {
     setSearchDraft("");
@@ -82,7 +83,9 @@ export function Reports() {
     </div>
     {query.isPending && <div className="list-skeleton"><i /><i /><i /></div>}
     {query.isError && <div className="inline-error" role="alert">报告加载失败。<button onClick={() => query.refetch()}>重新加载</button></div>}
-    {query.data?.items.length === 0 && <div className="empty-state"><p>{q ? `没有找到“${q}”相关的报告` : "当前筛选下没有报告"}</p><button className="text-button" onClick={clearFilters}>清除筛选</button></div>}
+    {query.data?.items.length === 0 && (hasFilters
+      ? <EmptyState title={q ? `没有找到“${q}”相关的报告` : "当前筛选下没有报告"} description="可以调整关键词、分类或时间范围后再试。" action={<button className="text-button" onClick={clearFilters}>清除筛选</button>} />
+      : <EmptyState title="还没有报告" description="在微信让Hermes将内容整理到知流并生成简报，结果会显示在这里。" action={<Link className="secondary-link" href="/">查看示例指令</Link>} />)}
     <div className="briefing-list">
       {query.data?.items.map((briefing) => <BriefingCard key={briefing.id} briefing={briefing} detailHref={`/reports/${briefing.id}?from=${encodeURIComponent(returnHref)}`} />)}
     </div>

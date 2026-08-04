@@ -78,3 +78,18 @@ it("加载失败时提供重新加载", async () => {
   fireEvent.click(retry);
   await waitFor(() => expect(get).toHaveBeenCalledTimes(2));
 });
+
+it("首次没有任务时提供微信入口", async () => {
+  window.history.pushState({}, "", "/tasks");
+  get.mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 });
+
+  render(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <Tasks />
+    </QueryClientProvider>,
+  );
+
+  expect(await screen.findByText("还没有任务记录")).toBeVisible();
+  expect(screen.getByText(/从微信让Hermes整理内容/)).toBeVisible();
+  expect(screen.getByRole("link", { name: "查看示例指令" })).toHaveAttribute("href", "/");
+});

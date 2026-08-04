@@ -59,8 +59,10 @@ button:disabled { cursor: wait; }
 .bottom-nav a.active { color: var(--signal); font-weight: 700; }
 .app-loader { min-height: 100vh; display: grid; place-items: center; color: var(--muted); }
 .page-placeholder { min-height: 260px; display: grid; place-items: center; color: var(--muted); }
-.empty-state { min-height: 180px; display: grid; place-items: center; align-content: center; gap: 10px; color: var(--muted); border: 1px dashed #cbd4ce; border-radius: 12px; }
-.empty-state p { margin: 0; }
+.empty-state { min-height: 180px; display: grid; place-items: center; align-content: center; gap: 10px; padding: 24px; color: var(--muted); text-align: center; border: 1px dashed #cbd4ce; border-radius: 12px; }
+.empty-state strong { color: var(--ink); font-size: 16px; }
+.empty-state p { max-width: 56ch; margin: 0; line-height: 1.6; }
+.empty-state .secondary-link, .empty-state .text-button { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
 .stack-lg { display: grid; gap: 14px; }
 .hermes-connection { border: 1px solid var(--line); border-radius: 12px; background: var(--paper); padding: 16px; display: grid; gap: 14px; }
 .hermes-summary { display:flex; justify-content:space-between; gap:16px; min-width:0; }
@@ -120,9 +122,10 @@ button:disabled { cursor: wait; }
 .keyword-row { display: flex; flex-wrap: wrap; gap: 5px; flex: 1; }
 .keyword-row span { padding: 3px 6px; border-radius: 4px; background: #f0f2f0; color: var(--muted); font-size: 11px; }
 .item-actions { display: flex; gap: 3px; }
-.item-actions button, .item-actions a { width: 44px; height: 44px; display: grid; place-items: center; border: 0; border-radius: 7px; background: transparent; color: #66716b; }
+.item-actions button, .item-actions a, .item-actions > span { width: 44px; height: 44px; display: grid; place-items: center; border: 0; border-radius: 7px; background: transparent; color: #66716b; }
 .item-actions button:disabled { opacity: .48; }
 .item-actions button:hover, .item-actions a:hover, .item-actions button.selected { background: var(--signal-soft); color: var(--signal); }
+.item-actions > span.unavailable { color: #9ba59f; cursor: not-allowed; }
 .pagination { display: flex; align-items: center; justify-content: center; gap: 12px; }
 .pagination button, .pagination a, .pagination > span.disabled { min-height: 44px; display: inline-flex; align-items: center; gap: 5px; padding: 0 12px; border: 1px solid var(--line); border-radius: 7px; background: white; color: var(--ink); font-weight: 700; text-decoration: none; }
 .pagination button:disabled, .pagination > span.disabled { opacity: .45; }.pagination > span:not(.disabled) { color: var(--muted); font-size: 14px; }
@@ -181,6 +184,13 @@ button:disabled { cursor: wait; }
 .attention-action { min-height: 44px; display: inline-flex; align-items: center; color: var(--signal); font-size: 14px; font-weight: 750; }
 .dashboard-empty { min-height: 76px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 14px 16px; border: 1px dashed #cdd8d1; border-radius: 10px; background: #f8faf8; color: #46514c; font-size: 15px; line-height: 1.6; }
 .dashboard-empty a { color: var(--signal); font-weight: 750; }
+.quick-start { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 14px; padding: 18px; border: 1px solid #b9d8c8; border-radius: 12px; background: #f2f9f5; }
+.quick-start-icon { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 9px; background: #dcefe5; color: var(--signal); }
+.quick-start-copy { min-width: 0; display: grid; gap: 12px; }
+.quick-start-copy h2 { margin: 0; font-size: 17px; }
+.quick-start-command { margin: 0; color: #273a31; font-size: 16px; font-weight: 650; line-height: 1.7; overflow-wrap: anywhere; }
+.quick-start-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+.quick-start-actions .primary-button { width: fit-content; }
 .briefing-list { display: grid; gap: 10px; }
 .report-tools { display: grid; grid-template-columns: minmax(0, 1fr) 150px; gap: 10px; }
 .report-tools > select { min-height: 44px; border: 1px solid var(--line); border-radius: 8px; padding: 0 36px 0 12px; background: white; color: var(--ink); font: inherit; }
