@@ -193,6 +193,23 @@ test("搜索知流并管理Hermes偏好", async ({ page }, testInfo) => {
   await capture(page, testInfo, "hermes-preferences");
 });
 
+test("查看质量记录和订阅健康", async ({ page }, testInfo) => {
+  await page.goto("/quality");
+  await expect(page.getByRole("heading", { name: "内容质量", level: 1 })).toBeVisible();
+  await expect(page.getByText(/质量检查并写入/).first()).toBeVisible();
+  if (testInfo.project.name === "mobile") {
+    await expect(page.getByRole("navigation", { name: "主导航" }).getByRole("link", { name: "质量" })).toHaveAttribute("aria-current", "page");
+  }
+  await page.getByRole("group", { name: "质量概览" }).getByRole("button", { name: /已恢复/ }).click();
+  await expect(page).toHaveURL(/action=restored/);
+  await expect(page.getByText("还没有恢复记录")).toBeVisible();
+  await capture(page, testInfo, "quality-center");
+  await page.goto("/settings");
+  await expect(page.getByRole("heading", { name: "订阅健康" })).toBeVisible();
+  await expect(page.getByText(/条产出/).first()).toBeVisible();
+  await capture(page, testInfo, "subscription-health");
+});
+
 test("网络中断后提示并自动恢复", async ({ page, context }, testInfo) => {
   await page.goto("/");
   await context.setOffline(true);

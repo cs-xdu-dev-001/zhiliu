@@ -6,6 +6,7 @@ import { Link } from "wouter";
 import { api } from "../api";
 import { HermesConnection } from "../components/HermesConnection";
 import { HermesPreferences } from "../components/HermesPreferences";
+import { SubscriptionHealth } from "../components/SubscriptionHealth";
 import type { IntelligenceKind, Subscription, SubscriptionInput } from "../types";
 import { useModalDialog } from "../useModalDialog";
 
@@ -140,6 +141,7 @@ export function Subscriptions() {
     <section className="stack-lg">
       <HermesConnection />
       <HermesPreferences />
+      <SubscriptionHealth />
       <div className="settings-toolbar">
         <Link className="secondary-link" href="/tasks"><History size={17} />任务记录</Link>
         <button className="primary-compact" onClick={(event) => openNew(event.currentTarget)}><Plus size={17} />新建订阅</button>

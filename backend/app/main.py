@@ -11,6 +11,8 @@ from app.api.hermes_integration import router as hermes_integration_router
 from app.api.subscriptions import router as subscriptions_router
 from app.api.search import router as search_router
 from app.api.preferences import router as preferences_router
+from app.api.quality import router as quality_router
+from app.api.subscription_health import router as subscription_health_router
 from app.db import SessionLocal
 from app.core.config import get_settings
 from app.core.config import Settings
@@ -60,6 +62,8 @@ def create_app(
     application.include_router(hermes_integration_router)
     application.include_router(search_router)
     application.include_router(preferences_router)
+    application.include_router(quality_router)
+    application.include_router(subscription_health_router)
 
     @application.get("/api/health")
     def health() -> dict[str, str]:

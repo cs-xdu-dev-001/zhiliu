@@ -25,6 +25,7 @@ from app.models import (
 )
 from app.services.run_service import canonical_item, item_fingerprint, normalize_url
 from app.services.preferences import PreferenceService
+from app.services.quality import record_quality_decisions
 
 
 AUTO_CATEGORIES = {
@@ -241,6 +242,14 @@ class PublicationService:
                     was_inserted=was_inserted,
                 )
                 for ordinal, (item, was_inserted) in enumerate(resolved_items)
+            )
+            record_quality_decisions(
+                self.db,
+                publication,
+                payload.items,
+                resolved_items,
+                {item.source for item in payload.items if preference_service.filters_source(item.source, payload.kind)},
+                payload.kind,
             )
             receipt = self._receipt(publication, duplicate=False)
             self.db.commit()

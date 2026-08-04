@@ -1,4 +1,4 @@
-import { ArrowLeft, BookOpenText, House, ListFilter, Radio, Search, Settings2 } from "lucide-react";
+import { ArrowLeft, BookOpenText, CircleCheck, House, ListFilter, Radio, Search, Settings2 } from "lucide-react";
 import { useEffect } from "react";
 import { Link, Route, Switch, useLocation } from "wouter";
 import { Feed } from "../pages/Feed";
@@ -7,6 +7,7 @@ import { Home } from "../pages/Home";
 import { ItemDetail } from "../pages/ItemDetail";
 import { Reports } from "../pages/Reports";
 import { SearchPage } from "../pages/Search";
+import { Quality } from "../pages/Quality";
 import { Subscriptions } from "../pages/Subscriptions";
 import { Tasks } from "../pages/Tasks";
 import { TaskDetail } from "../pages/TaskDetail";
@@ -21,12 +22,14 @@ const pageNames: Record<string, string> = {
   "/settings": "订阅与任务",
   "/tasks": "任务记录",
   "/search": "搜索知流",
+  "/quality": "内容质量",
 };
 
 const desktopNav = [
   { to: "/", label: "首页", icon: House, end: true },
   { to: "/feed", label: "情报", icon: ListFilter },
   { to: "/reports", label: "报告", icon: BookOpenText },
+  { to: "/quality", label: "质量", icon: CircleCheck },
   { to: "/settings", label: "设置", icon: Settings2 },
 ];
 
@@ -88,7 +91,7 @@ export function AppShell() {
           {!isDetailPage && <Link className="topbar-search" href="/search" aria-label="搜索知流" aria-current={pathname === "/search" ? "page" : undefined}><Search size={19} /></Link>}
         </header>
         <ServiceStatus />
-        <main id="main-content" tabIndex={-1} className="page-content"><Switch><Route path="/items/:id" component={ItemDetail} /><Route path="/reports/:id" component={BriefingDetail} /><Route path="/traces/:id" component={TraceDetail} /><Route path="/tasks/:id" component={TaskDetail} /><Route path="/feed" component={Feed} /><Route path="/reports" component={Reports} /><Route path="/search" component={SearchPage} /><Route path="/settings" component={Subscriptions} /><Route path="/tasks" component={Tasks} /><Route path="/" component={Home} /><Route component={Home} /></Switch></main>
+        <main id="main-content" tabIndex={-1} className="page-content"><Switch><Route path="/items/:id" component={ItemDetail} /><Route path="/reports/:id" component={BriefingDetail} /><Route path="/traces/:id" component={TraceDetail} /><Route path="/tasks/:id" component={TaskDetail} /><Route path="/feed" component={Feed} /><Route path="/reports" component={Reports} /><Route path="/search" component={SearchPage} /><Route path="/quality" component={Quality} /><Route path="/settings" component={Subscriptions} /><Route path="/tasks" component={Tasks} /><Route path="/" component={Home} /><Route component={Home} /></Switch></main>
       </div>
       {!hidesBottomNav && <BottomNav />}
     </div>

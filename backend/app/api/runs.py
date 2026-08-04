@@ -34,6 +34,7 @@ def _task_run_response(
         subscription_name=subscription.name if subscription else None,
         publication_id=publication.id if publication else None,
         briefing_id=publication.briefing_id if publication else None,
+        retry_count=record.retry_count,
     )
 
 

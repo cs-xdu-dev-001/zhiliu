@@ -93,3 +93,21 @@ it("首次没有任务时提供微信入口", async () => {
   expect(screen.getByText(/从微信让Hermes整理内容/)).toBeVisible();
   expect(screen.getByRole("link", { name: "查看示例指令" })).toHaveAttribute("href", "/");
 });
+
+it("排队任务显示自动重试次数", async () => {
+  window.history.pushState({}, "", "/tasks");
+  get.mockResolvedValueOnce({
+    items: [{ id: 2, subscriptionId: 1, subscriptionName: "每日Agent动态", topic: "自动恢复任务", hermesRunId: null, traceId: null, origin: "subscription-hermes", status: "queued", stage: "accepted", resultSummary: null, startedAt: "2026-08-01T08:00:00Z", finishedAt: null, durationMs: null, errorMessage: "第1次尝试失败，将自动重试", publicationId: null, briefingId: null, retryCount: 1 }],
+    total: 1,
+    limit: 20,
+    offset: 0,
+  });
+
+  render(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <Tasks />
+    </QueryClientProvider>,
+  );
+
+  expect(await screen.findByText("自动重试1/2")).toBeVisible();
+});

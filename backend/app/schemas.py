@@ -301,6 +301,28 @@ class PreferenceResponse(PreferencePayload):
     updated_at: datetime
 
 
+class SubscriptionHealthResponse(ApiModel):
+    subscription_id: int
+    name: str
+    kind: IntelligenceKind
+    enabled: bool
+    next_run_at: datetime | None
+    last_success_at: datetime | None
+    last_failure_at: datetime | None
+    run_count: int
+    success_count: int
+    failed_count: int
+    success_rate: float | None
+    consecutive_failures: int
+    average_duration_ms: int | None
+    produced_item_count: int
+
+
+class SubscriptionHealthPage(ApiModel):
+    items: list[SubscriptionHealthResponse]
+    generated_at: datetime
+
+
 class PreferencePage(ApiModel):
     items: list[PreferenceResponse]
 
@@ -340,6 +362,7 @@ class TaskRunResponse(ApiModel):
     subscription_name: str | None = None
     publication_id: int | None = None
     briefing_id: int | None = None
+    retry_count: int = 0
 
 
 class TaskRunPage(ApiModel):
@@ -347,6 +370,33 @@ class TaskRunPage(ApiModel):
     total: int
     limit: int
     offset: int
+
+
+class QualityDecisionResponse(ApiModel):
+    id: int
+    publication_id: int
+    item_id: int | None
+    action: Literal["accepted", "inserted", "duplicate", "filtered"]
+    reason_code: str
+    reason: str
+    kind: IntelligenceKind
+    title: str
+    summary: str
+    source: str
+    url: str
+    importance: float
+    restored_at: datetime | None
+    created_at: datetime
+    trace_id: str | None
+    briefing_id: int | None
+
+
+class QualityPage(ApiModel):
+    items: list[QualityDecisionResponse]
+    total: int
+    filtered_count: int
+    duplicate_count: int
+    restored_count: int
 
 
 DashboardResponse.model_rebuild()

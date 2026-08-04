@@ -183,6 +183,7 @@ export interface TaskRun {
   subscriptionName: string | null;
   publicationId: number | null;
   briefingId: number | null;
+  retryCount: number;
 }
 
 export interface TaskRunPage {
@@ -190,6 +191,57 @@ export interface TaskRunPage {
   total: number;
   limit: number;
   offset: number;
+}
+
+export type QualityAction = "accepted" | "inserted" | "duplicate" | "filtered";
+export type QualityFilter = "filtered" | "duplicate" | "restored";
+export interface QualityDecision {
+  id: number;
+  publicationId: number;
+  itemId: number | null;
+  action: QualityAction;
+  reasonCode: string;
+  reason: string;
+  kind: IntelligenceKind;
+  title: string;
+  summary: string;
+  source: string;
+  url: string;
+  importance: number;
+  restoredAt: string | null;
+  createdAt: string;
+  traceId: string | null;
+  briefingId: number | null;
+}
+
+export interface QualityPage {
+  items: QualityDecision[];
+  total: number;
+  filteredCount: number;
+  duplicateCount: number;
+  restoredCount: number;
+}
+
+export interface SubscriptionHealth {
+  subscriptionId: number;
+  name: string;
+  kind: IntelligenceKind;
+  enabled: boolean;
+  nextRunAt: string | null;
+  lastSuccessAt: string | null;
+  lastFailureAt: string | null;
+  runCount: number;
+  successCount: number;
+  failedCount: number;
+  successRate: number | null;
+  consecutiveFailures: number;
+  averageDurationMs: number | null;
+  producedItemCount: number;
+}
+
+export interface SubscriptionHealthPage {
+  items: SubscriptionHealth[];
+  generatedAt: string;
 }
 
 export interface Dashboard {

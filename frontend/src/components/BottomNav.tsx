@@ -1,10 +1,11 @@
-import { BookOpenText, House, ListFilter, Settings2 } from "lucide-react";
+import { BookOpenText, CircleCheck, House, ListFilter, Settings2 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 
 const entries = [
   { to: "/", label: "首页", icon: House, end: true },
   { to: "/feed", label: "情报", icon: ListFilter },
   { to: "/reports", label: "报告", icon: BookOpenText },
+  { to: "/quality", label: "质量", icon: CircleCheck },
   { to: "/settings", label: "设置", icon: Settings2 },
 ];
 

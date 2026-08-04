@@ -137,6 +137,11 @@ class HermesPublication(Base):
         cascade="all, delete-orphan",
         order_by="PublicationItem.ordinal",
     )
+    quality_decisions: Mapped[list["HermesQualityDecision"]] = relationship(
+        back_populates="publication",
+        cascade="all, delete-orphan",
+        order_by="HermesQualityDecision.created_at",
+    )
 
 
 class PublicationItem(Base):
@@ -175,6 +180,7 @@ class TaskRun(Base):
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    retry_count: Mapped[int] = mapped_column(Integer, default=0)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     raw_output: Mapped[str | None] = mapped_column(Text, nullable=True)
 
@@ -201,7 +207,6 @@ class HermesPreference(Base):
     __table_args__ = (
         UniqueConstraint("scope", "effect", "value", "kind", name="uq_hermes_preferences_rule"),
     )
-
     id: Mapped[int] = mapped_column(primary_key=True)
     scope: Mapped[str] = mapped_column(String(30), index=True)
     effect: Mapped[str] = mapped_column(String(30), index=True)
@@ -212,3 +217,26 @@ class HermesPreference(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
+
+class HermesQualityDecision(Base):
+    __tablename__ = "hermes_quality_decisions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    publication_id: Mapped[int] = mapped_column(
+        ForeignKey("hermes_publications.id", ondelete="CASCADE"), index=True
+    )
+    item_id: Mapped[int | None] = mapped_column(ForeignKey("intelligence_items.id"), nullable=True, index=True)
+    action: Mapped[str] = mapped_column(String(30), index=True)
+    reason_code: Mapped[str] = mapped_column(String(40))
+    reason: Mapped[str] = mapped_column(String(500))
+    kind: Mapped[str] = mapped_column(String(30), index=True)
+    title: Mapped[str] = mapped_column(String(300))
+    summary: Mapped[str] = mapped_column(Text)
+    url: Mapped[str] = mapped_column(String(1000))
+    source: Mapped[str] = mapped_column(String(120))
+    keywords_json: Mapped[str] = mapped_column(Text, default="[]")
+    importance: Mapped[float] = mapped_column(Float, default=0)
+    restored_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+    publication: Mapped[HermesPublication] = relationship(back_populates="quality_decisions")

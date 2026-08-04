@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Briefing, HermesPublication, IntelligenceItem, PublicationItem, TaskRun
 from app.services.hermes import HermesBriefing, HermesItem, HermesResult
+from app.services.hermes import HermesUnavailable
 from app.services.run_service import RunService, item_fingerprint
 
 
@@ -138,4 +139,21 @@ async def test_run_service_reuses_merge_target_instead_of_audit_source(
 
     link = db_session.scalar(select(PublicationItem))
     assert link.item_id == target.id
+
+
+class FlakyHermesClient:
+    async def execute(self, prompt: str) -> HermesResult:
+        raise HermesUnavailable("临时不可用")
+
+
+@pytest.mark.asyncio
+async def test_run_service_requeues_transient_failure_before_final_failure(db_session: Session, subscription) -> None:
+    task = TaskRun(subscription_id=subscription.id, status="queued")
+    db_session.add(task)
+    db_session.commit()
+    await RunService(db_session, FlakyHermesClient()).execute_task(task.id)
+    db_session.refresh(task)
+    assert task.status == "queued"
+    assert task.retry_count == 1
+    assert task.finished_at is None
 

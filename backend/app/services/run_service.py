@@ -8,7 +8,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import Briefing, HermesPublication, IntelligenceItem, PublicationItem, TaskRun
-from app.services.hermes import HermesClient
+from app.services.hermes import HermesClient, HermesTimeout, HermesUnavailable
+from app.services.quality import record_quality_decisions
 
 
 def normalize_url(value: str) -> str:
@@ -57,6 +58,7 @@ class RunService:
         self.db.commit()
         started = time.perf_counter()
 
+        retrying = False
         try:
             result = await self.hermes_client.execute(task.subscription.prompt)
             task.hermes_run_id = result.run_id
@@ -134,6 +136,7 @@ class RunService:
                 )
                 for ordinal, (item, was_inserted) in enumerate(resolved_items)
             )
+            record_quality_decisions(self.db, publication, result.items, resolved_items)
             task.subscription.last_run_at = datetime.now(timezone.utc)
             task.status = "success"
             task.stage = "completed"
@@ -141,6 +144,23 @@ class RunService:
                 f"新增{inserted}条情报，复用{len(resolved_items) - inserted}条，"
                 f"生成报告《{briefing.title}》"
             )
+        except (HermesUnavailable, HermesTimeout) as exc:
+            self.db.rollback()
+            task = self.db.get(TaskRun, task_id)
+            if task is None:
+                raise
+            if task.retry_count < 2:
+                task.retry_count += 1
+                task.status = "queued"
+                task.stage = "accepted"
+                task.error_message = f"第{task.retry_count}次尝试失败，将自动重试：{str(exc)[:1800]}"
+                task.finished_at = None
+                task.duration_ms = None
+                retrying = True
+            else:
+                task.status = "failed"
+                task.stage = "failed"
+                task.error_message = str(exc)[:2000]
         except Exception as exc:
             self.db.rollback()
             task = self.db.get(TaskRun, task_id)
@@ -150,6 +170,7 @@ class RunService:
             task.stage = "failed"
             task.error_message = str(exc)[:2000]
         finally:
-            task.finished_at = datetime.now(timezone.utc)
-            task.duration_ms = int((time.perf_counter() - started) * 1000)
+            if not retrying:
+                task.finished_at = datetime.now(timezone.utc)
+                task.duration_ms = int((time.perf_counter() - started) * 1000)
             self.db.commit()

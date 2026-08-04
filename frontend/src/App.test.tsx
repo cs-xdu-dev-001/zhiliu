@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 
 import { App } from "./App";
@@ -55,4 +55,11 @@ test("提供键盘跳转正文入口", () => {
   renderApp("/");
   expect(screen.getByRole("link", { name: "跳到主要内容" })).toHaveAttribute("href", "#main-content");
   expect(document.querySelector("main")).toHaveAttribute("id", "main-content");
+});
+
+test("手机主导航可直接进入内容质量", () => {
+  renderApp("/quality");
+  const qualityLink = within(screen.getByRole("navigation", { name: "主导航" })).getByRole("link", { name: "质量" });
+  expect(qualityLink).toHaveAttribute("href", "/quality");
+  expect(qualityLink).toHaveAttribute("aria-current", "page");
 });

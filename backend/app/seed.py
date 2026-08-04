@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.models import (
     Briefing,
     HermesPublication,
+    HermesQualityDecision,
     IntelligenceItem,
     PublicationItem,
     Subscription,
@@ -154,6 +155,24 @@ def seed_database(
             (publications[1], items[3:6]),
         )
         for ordinal, item in enumerate(source_items)
+    )
+    db.add_all(
+        HermesQualityDecision(
+            publication_id=publication.id,
+            item_id=item.id,
+            action="inserted",
+            reason_code="accepted",
+            reason="演示内容通过质量检查并写入",
+            kind=item.kind,
+            title=item.title,
+            summary=item.summary,
+            url=item.url,
+            source=item.source,
+            keywords_json=item.keywords_json,
+            importance=item.importance,
+        )
+        for publication, source_items in ((publications[0], items[:3]), (publications[1], items[3:6]))
+        for item in source_items
     )
     db.commit()
 
