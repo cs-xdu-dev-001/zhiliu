@@ -42,6 +42,7 @@ export function Home() {
     && !data.latestBriefing
     && (data.recentRuns?.length ?? 0) === 0
     && hermesQuery.data?.status === "connected";
+  const hasRecentRuns = (data.recentRuns?.length ?? 0) > 0;
 
   async function copyFirstCommand() {
     try {
@@ -92,7 +93,7 @@ export function Home() {
           {copyState === "error" && <p className="form-error" role="alert">复制失败，请长按选中上方指令后复制。</p>}
         </div>
       </section>}
-      {!showQuickStart && <div className="home-content-grid">
+      {!showQuickStart && <div className={`home-content-grid ${hasRecentRuns ? "three-columns" : "two-columns"}`}>
         <section className="home-reading">
           <div className="section-heading"><h2>优先阅读</h2><Link href="/feed">查看全部</Link></div>
           {data.topItems.length > 0
@@ -100,7 +101,7 @@ export function Home() {
             : <div className="dashboard-empty">没有待阅读情报，新的微信整理结果会显示在这里。<Link href="/feed">查看全部情报</Link></div>}
         </section>
         <div className="home-side-column">
-          {data.recentRuns?.length > 0 && <section>
+          {hasRecentRuns && <section>
             <div className="section-heading"><h2>最近处理动态</h2><Link href="/tasks">全部任务</Link></div>
             <div className="task-list task-list-compact">{data.recentRuns.slice(0, 2).map((run) => <TaskRunCard key={run.id} run={run} />)}</div>
           </section>}

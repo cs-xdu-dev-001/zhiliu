@@ -69,6 +69,19 @@ it("统计卡和内容卡进入对应筛选或详情", async () => {
   expect(screen.getByText("Hermes正在理解、检索和整理")).toBeVisible();
   expect(screen.getByRole("heading", { name: "需要处理" })).toBeVisible();
   expect(screen.getByRole("link", { name: /4个异常任务/ })).toHaveAttribute("href", "/tasks?status=failed");
+  expect(document.querySelector(".home-content-grid")).toHaveClass("three-columns");
+});
+
+it("没有最近任务时使用完整双栏布局", async () => {
+  get.mockImplementation((path: string) => Promise.resolve(path === "/api/dashboard"
+    ? { ...dashboard, failedRuns: 0, recentRuns: [] }
+    : connectedHermes));
+
+  renderHome();
+
+  expect(await screen.findByRole("heading", { name: "优先阅读" })).toBeVisible();
+  expect(screen.queryByRole("heading", { name: "最近处理动态" })).not.toBeInTheDocument();
+  expect(document.querySelector(".home-content-grid")).toHaveClass("two-columns");
 });
 
 it("Hermes异常时给出明确恢复入口", async () => {
