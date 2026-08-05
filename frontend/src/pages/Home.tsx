@@ -62,7 +62,7 @@ export function Home() {
       <section className="metric-grid" aria-label="情报概览">
         {metrics.map(({ label, value, icon: Icon, tone, href }) => <Link className={`metric ${tone}`} href={href} key={label}><Icon size={19} /><div><strong>{value}</strong><span>{label}</span></div></Link>)}
       </section>
-      {hasAttention && <section aria-labelledby="attention-heading">
+      {hasAttention && <section className="home-attention" aria-labelledby="attention-heading">
         <div className="section-heading"><h2 id="attention-heading">需要处理</h2></div>
         <div className="attention-list">
           {data.failedRuns > 0 && <Link className="attention-row danger" href="/tasks?status=failed">
@@ -92,22 +92,26 @@ export function Home() {
           {copyState === "error" && <p className="form-error" role="alert">复制失败，请长按选中上方指令后复制。</p>}
         </div>
       </section>}
-      {!showQuickStart && <section>
-        <div className="section-heading"><h2>优先阅读</h2><Link href="/feed">查看全部</Link></div>
-        {data.topItems.length > 0
-          ? <div className="home-priority">{data.topItems.slice(0, 2).map((item) => <ItemCard key={item.id} item={item} detailHref={`/items/${item.id}?from=${encodeURIComponent("/")}`} compact />)}</div>
-          : <div className="dashboard-empty">没有待阅读情报，新的微信整理结果会显示在这里。<Link href="/feed">查看全部情报</Link></div>}
-      </section>}
-      {data.recentRuns?.length > 0 && <section>
-        <div className="section-heading"><h2>最近处理动态</h2><Link href="/tasks">全部任务</Link></div>
-        <div className="task-list task-list-compact">{data.recentRuns.slice(0, 2).map((run) => <TaskRunCard key={run.id} run={run} />)}</div>
-      </section>}
-      {!showQuickStart && <section>
-        <div className="section-heading"><h2>最新简报</h2><Link href="/reports">历史报告</Link></div>
-        {data.latestBriefing
-          ? <BriefingCard briefing={data.latestBriefing} detailHref={`/reports/${data.latestBriefing.id}?from=${encodeURIComponent("/")}`} />
-          : <div className="dashboard-empty">还没有简报，Hermes完成整理并写入后会显示在这里。<Link href="/tasks">查看处理进度</Link></div>}
-      </section>}
+      {!showQuickStart && <div className="home-content-grid">
+        <section className="home-reading">
+          <div className="section-heading"><h2>优先阅读</h2><Link href="/feed">查看全部</Link></div>
+          {data.topItems.length > 0
+            ? <div className="home-priority">{data.topItems.slice(0, 2).map((item) => <ItemCard key={item.id} item={item} detailHref={`/items/${item.id}?from=${encodeURIComponent("/")}`} compact />)}</div>
+            : <div className="dashboard-empty">没有待阅读情报，新的微信整理结果会显示在这里。<Link href="/feed">查看全部情报</Link></div>}
+        </section>
+        <div className="home-side-column">
+          {data.recentRuns?.length > 0 && <section>
+            <div className="section-heading"><h2>最近处理动态</h2><Link href="/tasks">全部任务</Link></div>
+            <div className="task-list task-list-compact">{data.recentRuns.slice(0, 2).map((run) => <TaskRunCard key={run.id} run={run} />)}</div>
+          </section>}
+          <section>
+            <div className="section-heading"><h2>最新简报</h2><Link href="/reports">历史报告</Link></div>
+            {data.latestBriefing
+              ? <BriefingCard briefing={data.latestBriefing} detailHref={`/reports/${data.latestBriefing.id}?from=${encodeURIComponent("/")}`} />
+              : <div className="dashboard-empty">还没有简报，Hermes完成整理并写入后会显示在这里。<Link href="/tasks">查看处理进度</Link></div>}
+          </section>
+        </div>
+      </div>}
     </div>
   );
 }
