@@ -70,3 +70,12 @@ it("拒绝不安全的原文链接", () => {
   expect(screen.queryByRole("link", { name: "打开原文（新窗口）" })).not.toBeInTheDocument();
   expect(screen.getByLabelText("原文链接不可用")).toBeVisible();
 });
+
+it("首页紧凑卡只保留判断所需信息", () => {
+  render(<ItemCard item={item} compact />);
+
+  expect(screen.getByText("工具调用可靠性提升。")).toHaveClass("item-summary");
+  expect(screen.queryByText("Agent")).not.toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: "打开原文（新窗口）" })).not.toBeInTheDocument();
+  expect(screen.getByText("查看详情")).toBeVisible();
+});

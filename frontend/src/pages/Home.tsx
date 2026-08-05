@@ -58,7 +58,7 @@ export function Home() {
     { label: "异常任务", value: data.failedRuns, icon: TriangleAlert, tone: "coral", href: "/tasks?status=failed" },
   ];
   return (
-    <div className="stack-xl">
+    <div className="stack-xl home-stack">
       <section className="metric-grid" aria-label="情报概览">
         {metrics.map(({ label, value, icon: Icon, tone, href }) => <Link className={`metric ${tone}`} href={href} key={label}><Icon size={19} /><div><strong>{value}</strong><span>{label}</span></div></Link>)}
       </section>
@@ -95,12 +95,12 @@ export function Home() {
       {!showQuickStart && <section>
         <div className="section-heading"><h2>优先阅读</h2><Link href="/feed">查看全部</Link></div>
         {data.topItems.length > 0
-          ? <div className="item-list">{data.topItems.map((item) => <ItemCard key={item.id} item={item} detailHref={`/items/${item.id}?from=${encodeURIComponent("/")}`} compact />)}</div>
+          ? <div className="home-priority">{data.topItems.slice(0, 2).map((item) => <ItemCard key={item.id} item={item} detailHref={`/items/${item.id}?from=${encodeURIComponent("/")}`} compact />)}</div>
           : <div className="dashboard-empty">没有待阅读情报，新的微信整理结果会显示在这里。<Link href="/feed">查看全部情报</Link></div>}
       </section>}
       {data.recentRuns?.length > 0 && <section>
         <div className="section-heading"><h2>最近处理动态</h2><Link href="/tasks">全部任务</Link></div>
-        <div className="task-list task-list-compact">{data.recentRuns.slice(0, 3).map((run) => <TaskRunCard key={run.id} run={run} />)}</div>
+        <div className="task-list task-list-compact">{data.recentRuns.slice(0, 2).map((run) => <TaskRunCard key={run.id} run={run} />)}</div>
       </section>}
       {!showQuickStart && <section>
         <div className="section-heading"><h2>最新简报</h2><Link href="/reports">历史报告</Link></div>

@@ -99,3 +99,16 @@ it("没有内容时直接提供可复制的微信指令", async () => {
   expect(screen.queryByText(/还没有简报/)).not.toBeInTheDocument();
   expect(screen.queryByRole("heading", { name: "需要处理" })).not.toBeInTheDocument();
 });
+
+it("首页优先阅读只展示前两条", async () => {
+  const firstItem = dashboard.topItems[0];
+  get.mockImplementation((path: string) => Promise.resolve(path === "/api/dashboard"
+    ? { ...dashboard, topItems: [firstItem, { ...firstItem, id: 2, title: "第二条情报" }, { ...firstItem, id: 3, title: "第三条情报" }] }
+    : connectedHermes));
+
+  renderHome();
+
+  expect(await screen.findByText("Agent框架发布新版本")).toBeVisible();
+  expect(screen.getByText("第二条情报")).toBeVisible();
+  expect(screen.queryByText("第三条情报")).not.toBeInTheDocument();
+});

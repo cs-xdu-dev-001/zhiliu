@@ -59,19 +59,19 @@ export function ItemCard({
         <p className="item-summary">{item.summary || item.reason || "暂无摘要"}</p>
         <span className="card-detail-cue">查看详情</span>
       </Link>
-      <div className="item-footer">
-        <div className="keyword-row">{item.keywords.slice(0, 3).map((keyword) => <span key={keyword}>{keyword}</span>)}</div>
-        <div className="item-actions">
-          {onChange && <>
-            <button disabled={busy} className={item.isSaved ? "selected" : ""} onClick={() => onChange({ isSaved: !item.isSaved })} aria-label={item.isSaved ? "取消收藏" : "收藏"} title={item.isSaved ? "取消收藏" : "收藏"}><Bookmark size={17} fill={item.isSaved ? "currentColor" : "none"} /></button>
-            <button disabled={busy} onClick={() => onChange({ isRead: !item.isRead })} aria-label={item.isRead ? "标记未读" : "标记已读"} title={item.isRead ? "标记未读" : "标记已读"}><Check size={17} /></button>
-            <button disabled={busy} onClick={() => onChange({ isIgnored: true })} aria-label="忽略" title="忽略"><EyeOff size={17} /></button>
-          </>}
-          {sourceUrl
-            ? <a href={sourceUrl} target="_blank" rel="noreferrer" aria-label="打开原文（新窗口）" title="打开原文"><ExternalLink size={17} /></a>
-            : <span className="unavailable" aria-label="原文链接不可用" title="原文链接不可用"><ExternalLink size={17} /></span>}
-        </div>
-      </div>
+      {!compact && <div className="item-footer">
+          <div className="keyword-row">{item.keywords.slice(0, 3).map((keyword) => <span key={keyword}>{keyword}</span>)}</div>
+          <div className="item-actions">
+            {onChange && <>
+              <button disabled={busy} className={item.isSaved ? "selected" : ""} onClick={() => onChange({ isSaved: !item.isSaved })} aria-label={item.isSaved ? "取消收藏" : "收藏"} title={item.isSaved ? "取消收藏" : "收藏"}><Bookmark size={17} fill={item.isSaved ? "currentColor" : "none"} /></button>
+              <button disabled={busy} onClick={() => onChange({ isRead: !item.isRead })} aria-label={item.isRead ? "标记未读" : "标记已读"} title={item.isRead ? "标记未读" : "标记已读"}><Check size={17} /></button>
+              <button disabled={busy} onClick={() => onChange({ isIgnored: true })} aria-label="忽略" title="忽略"><EyeOff size={17} /></button>
+            </>}
+            {sourceUrl
+              ? <a href={sourceUrl} target="_blank" rel="noreferrer" aria-label="打开原文（新窗口）" title="打开原文"><ExternalLink size={17} /></a>
+              : <span className="unavailable" aria-label="原文链接不可用" title="原文链接不可用"><ExternalLink size={17} /></span>}
+          </div>
+        </div>}
     </article>
   );
 }
