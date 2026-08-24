@@ -336,9 +336,9 @@ export function Feed() {
       </div>
       {query.data && query.data.total > PAGE_SIZE && <nav className="pagination" aria-label="情报分页"><button disabled={page <= 1} onClick={() => setView({ page: page - 1 })}><ChevronLeft size={17} />上一页</button><span>第{page}/{totalPages}页</span><button disabled={page >= totalPages} onClick={() => setView({ page: page + 1 })}>下一页<ChevronRight size={17} /></button></nav>}
       {reportOpen && <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeReportDialog(); }}>
-        <section ref={reportDialogRef} className="dialog-panel report-create-dialog" role="dialog" aria-modal="true" aria-labelledby="report-create-title">
+        <section ref={reportDialogRef} className="dialog-panel report-create-dialog" role="dialog" aria-modal="true" aria-labelledby="report-create-title" aria-describedby="report-create-description">
           <div className="dialog-heading"><h2 id="report-create-title">{supplementReportId ? `补充${selected.size}条来源并生成新版` : `用${selected.size}条情报生成报告`}</h2><button aria-label="关闭" disabled={generateReport.isPending} onClick={closeReportDialog}><X size={18} /></button></div>
-          <label>整理要求<textarea data-autofocus maxLength={1000} rows={4} value={reportInstruction} onChange={(event) => setReportInstruction(event.target.value)} placeholder="例如：比较共同趋势，说明对研究工作的影响；留空则由Hermes自行组织。" /></label>
+          <label id="report-create-description">整理要求<textarea data-autofocus maxLength={1000} rows={4} value={reportInstruction} onChange={(event) => setReportInstruction(event.target.value)} placeholder="例如：比较共同趋势，说明对研究工作的影响；留空则由Hermes自行组织。" /></label>
           <p className="dialog-error" role="alert">{generateReport.isError ? `创建失败：${generateReport.error instanceof ApiError ? generateReport.error.message : "服务暂时不可用"}。所选内容已保留，可直接重试。` : ""}</p>
           <div className="dialog-actions"><button className="secondary-button" disabled={generateReport.isPending} onClick={closeReportDialog}>取消</button><button className="primary-button" disabled={generateReport.isPending} onClick={() => generateReport.mutate()}>{generateReport.isPending ? "正在创建" : generateReport.isError ? "重试创建" : "交给Hermes"}</button></div>
         </section>

@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 
 import { App } from "./App";
@@ -21,18 +22,18 @@ test("直接显示应用，即使地址为/login", () => {
   expect(screen.queryByText("登录")).not.toBeInTheDocument();
 });
 
-test("情报详情路由显示正确顶栏标题", () => {
+test("情报详情路由显示正确顶栏标题", async () => {
   renderApp("/items/1?from=%2Ffeed%3Fstate%3Dunread");
   expect(screen.getByRole("heading", { name: "情报详情" })).toBeVisible();
-  expect(screen.getByText("情报详情内容")).toBeVisible();
+  expect(await screen.findByText("情报详情内容")).toBeVisible();
   expect(screen.getByRole("link", { name: "返回上一列表" })).toHaveAttribute("href", "/feed?state=unread");
   expect(document.title).toBe("情报详情 · 知流");
 });
 
-test("报告详情路由显示正确顶栏标题", () => {
+test("报告详情路由显示正确顶栏标题", async () => {
   renderApp("/reports/1");
   expect(screen.getByRole("heading", { name: "报告详情" })).toBeVisible();
-  expect(screen.getByText("报告详情内容")).toBeVisible();
+  expect(await screen.findByText("报告详情内容")).toBeVisible();
 });
 
 test.each(["/items/1", "/reports/1", "/traces/1"])("详情页隐藏会覆盖内容的手机底部导航：%s", (path) => {
@@ -80,6 +81,17 @@ test("手机主导航可直接进入任务收件箱", () => {
   const inboxLink = within(screen.getByRole("navigation", { name: "主导航" })).getByRole("link", { name: "收件箱" });
   expect(inboxLink).toHaveAttribute("href", "/tasks");
   expect(inboxLink).toHaveAttribute("aria-current", "page");
+});
+
+test("路由切换后把键盘焦点移到主要内容", async () => {
+  renderApp("/");
+  await userEvent.click(within(screen.getByRole("navigation", { name: "桌面导航" })).getByRole("link", { name: "报告" }));
+  await waitFor(() => expect(document.getElementById("main-content")).toHaveFocus());
+});
+
+test("桌面品牌可返回首页", () => {
+  renderApp("/feed");
+  expect(screen.getByRole("link", { name: "知流首页" })).toHaveAttribute("href", "/");
 });
 
 test("手机主导航保留内容质量入口", () => {

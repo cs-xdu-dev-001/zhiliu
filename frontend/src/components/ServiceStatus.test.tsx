@@ -31,11 +31,14 @@ it("服务不可达时允许重试并提示恢复", async () => {
   expect(get).toHaveBeenCalledWith("/api/health");
 });
 
-it("浏览器离线时等待网络自动恢复", async () => {
+it("浏览器离线后在网络恢复时主动重新检查服务", async () => {
   vi.spyOn(window.navigator, "onLine", "get").mockReturnValue(false);
   renderStatus();
 
   expect(await screen.findByRole("alert")).toHaveTextContent("网络已断开");
   expect(screen.queryByRole("button", { name: "立即重试" })).not.toBeInTheDocument();
   expect(get).not.toHaveBeenCalled();
+  window.dispatchEvent(new Event("online"));
+  expect(await screen.findByRole("status")).toHaveTextContent("连接已恢复");
+  expect(get).toHaveBeenCalledWith("/api/health");
 });

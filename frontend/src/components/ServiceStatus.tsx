@@ -20,7 +20,10 @@ export function ServiceStatus() {
   const hasIssue = !browserOnline || health.isError;
 
   useEffect(() => {
-    const handleOnline = () => setBrowserOnline(true);
+    const handleOnline = () => {
+      setBrowserOnline(true);
+      void health.refetch();
+    };
     const handleOffline = () => setBrowserOnline(false);
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
@@ -28,7 +31,7 @@ export function ServiceStatus() {
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
     };
-  }, []);
+  }, [health.refetch]);
 
   useEffect(() => {
     if (hasIssue) {

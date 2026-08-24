@@ -1,13 +1,16 @@
 import { useQuery } from "@tanstack/react-query";
 import { Bot, Database, FileText, MessageCircle, Radio, Workflow } from "lucide-react";
+import { useState } from "react";
 import { Link, useParams } from "wouter";
 
 import { api, ApiError } from "../api";
 import type { PublicationTrace } from "../types";
 
+const TRACE_PREVIEW_COUNT = 6;
 
 export function TraceDetail() {
   const { id = "" } = useParams<{ id: string }>();
+  const [showAllItems, setShowAllItems] = useState(false);
   const query = useQuery({
     queryKey: ["publication-trace", id],
     queryFn: () => api.get<PublicationTrace>(`/api/publications/${id}/trace`),
@@ -23,6 +26,8 @@ export function TraceDetail() {
   const isWeixin = trace.origin === "weixin-hermes";
   const isReport = trace.origin === "web-report";
   const from = encodeURIComponent(`/traces/${trace.publicationId}`);
+  const visibleItems = showAllItems ? trace.items : trace.items.slice(0, TRACE_PREVIEW_COUNT);
+  const hiddenItemCount = trace.items.length - visibleItems.length;
 
   return (
     <article className="trace-page">
@@ -59,12 +64,13 @@ export function TraceDetail() {
             <h3>情报入库</h3>
             {trace.items.length ? (
               <div className="trace-item-list">
-                {trace.items.map((item) => (
+                {visibleItems.map((item) => (
                   <div key={item.id}>
                     <Link href={`/items/${item.id}?from=${from}`}>{item.title}</Link>
                     <span>{item.wasInserted ? "新写入" : "复用已有情报"} · {item.source.trim() || "来源未标注"}{item.isInvalid ? " · 已标记无效" : ""}</span>
                   </div>
                 ))}
+                {trace.items.length > TRACE_PREVIEW_COUNT && <button className="secondary-compact trace-items-toggle" type="button" aria-expanded={showAllItems} onClick={() => setShowAllItems((current) => !current)}>{showAllItems ? "收起来源情报" : `展开其余${hiddenItemCount}条`}</button>}
               </div>
             ) : <p>本次没有写入情报</p>}
           </div>

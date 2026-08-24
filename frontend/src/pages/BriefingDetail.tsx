@@ -197,16 +197,16 @@ export function BriefingDetail() {
                   <span>{item.source.trim() || "来源未标注"} · {item.wasInserted ? "本次写入" : "复用已有情报"}</span>
                   <span className={`evidence-state ${item.evidenceStatus}`} title={item.evidenceMessage}>{evidenceLabel} · {item.evidenceMessage}</span>
                 </div>
-                {sourceUrl ? <a className="source-external" href={sourceUrl} target="_blank" rel="noreferrer"><ExternalLink size={16} />打开原文（新窗口）</a> : <span className="source-unavailable">原文不可用</span>}
+                {sourceUrl ? <a className="source-external" href={sourceUrl} target="_blank" rel="noreferrer" aria-label="打开原文（新窗口）"><ExternalLink size={16} aria-hidden="true" />打开原文（新窗口）</a> : <span className="source-unavailable">原文不可用</span>}
               </article>;
             })}
           </div> : <p className="trace-empty">本报告没有关联来源情报</p>
         ) : <p className="trace-empty">历史数据，暂无完整追踪信息</p>}
       </section>
       {regenerateOpen && <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeRegenerateDialog(); }}>
-        <section ref={regenerateDialogRef} className="dialog-panel report-create-dialog" role="dialog" aria-modal="true" aria-labelledby="report-regenerate-title">
+        <section ref={regenerateDialogRef} className="dialog-panel report-create-dialog" role="dialog" aria-modal="true" aria-labelledby="report-regenerate-title" aria-describedby="report-regenerate-description">
           <div className="dialog-heading"><h2 id="report-regenerate-title">重新生成v{(report.versionNumber ?? 1) + 1}</h2><button aria-label="关闭" disabled={regenerate.isPending} onClick={closeRegenerateDialog}><X size={18} /></button></div>
-          <label>调整要求<textarea data-autofocus maxLength={1000} rows={4} value={regenerateInstruction} onChange={(event) => setRegenerateInstruction(event.target.value)} placeholder="例如：压缩背景说明，重点比较分歧；留空则按默认方式重写。" /></label>
+          <label id="report-regenerate-description">调整要求<textarea data-autofocus maxLength={1000} rows={4} value={regenerateInstruction} onChange={(event) => setRegenerateInstruction(event.target.value)} placeholder="例如：压缩背景说明，重点比较分歧；留空则按默认方式重写。" /></label>
           {regenerate.isError && <p className="dialog-error" role="alert">任务创建失败：{regenerate.error instanceof ApiError ? regenerate.error.message : "服务暂时不可用"}。调整要求已保留，可直接重试。</p>}
           <div className="dialog-actions"><button className="secondary-button" disabled={regenerate.isPending} onClick={closeRegenerateDialog}>取消</button><button className="primary-button" disabled={regenerate.isPending} onClick={() => regenerate.mutate()}>{regenerate.isPending ? "正在创建" : regenerate.isError ? "重试生成" : "开始生成"}</button></div>
         </section>

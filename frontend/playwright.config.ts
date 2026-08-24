@@ -2,7 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const e2eDatabase = join(tmpdir(), `zhiliu-e2e-${process.pid}.db`).replaceAll("\\", "/");
+const e2eDatabase = join(tmpdir(), `zhiliu-e2e-${process.pid}-${Date.now()}.db`).replaceAll("\\", "/");
 
 export default defineConfig({
   testDir: "./e2e",

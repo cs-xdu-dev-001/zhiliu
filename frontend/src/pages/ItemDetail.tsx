@@ -140,7 +140,7 @@ export function ItemDetail() {
   const rerun = useMutation({
     mutationFn: (subscriptionId: number) => api.post(`/api/subscriptions/${subscriptionId}/run`),
     onMutate: () => setNotice(null),
-    onSuccess: () => setNotice({ tone: "success", text: "已交给Hermes重新整理，可在任务记录查看进度" }),
+    onSuccess: () => setNotice({ tone: "success", text: "已交给Hermes重新整理，可在任务收件箱查看进度" }),
   });
   const updateTags = useMutation({
     mutationFn: () => api.put<IntelligenceItem>(`/api/items/${id}/tags`, {

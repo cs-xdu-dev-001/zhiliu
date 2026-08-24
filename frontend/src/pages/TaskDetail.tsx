@@ -45,7 +45,7 @@ export function TaskDetail() {
 
   if (query.isPending) return <div className="detail-skeleton" role="status" aria-label="正在加载任务详情" />;
   if (query.error instanceof ApiError && query.error.status === 404) {
-    return <div className="empty-state"><p>任务不存在或已删除</p><Link className="secondary-link" href="/tasks">返回任务记录</Link></div>;
+    return <div className="empty-state"><p>任务不存在或已删除</p><Link className="secondary-link" href="/tasks">返回任务收件箱</Link></div>;
   }
   if (query.isError) return <div className="inline-error" role="alert">任务详情加载失败。<button onClick={() => query.refetch()}>重新加载</button></div>;
 
@@ -58,7 +58,7 @@ export function TaskDetail() {
 
   return (
     <article className="task-detail detail-page">
-      <Link className="detail-back" href="/tasks"><ArrowLeft size={17} />返回任务记录</Link>
+      <Link className="detail-back" href="/tasks"><ArrowLeft size={17} />返回任务收件箱</Link>
       <header className={`task-detail-header ${run.status}`}>
         <div className="task-detail-title">
           <h2>{run.topic || run.subscriptionName || `任务#${run.id}`}</h2>

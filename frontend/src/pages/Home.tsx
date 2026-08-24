@@ -31,7 +31,7 @@ export function Home() {
     refetchInterval: (current) => current.state.data?.status === "connected" ? 60_000 : 15_000,
   });
   if (query.isPending) return <div className="dashboard-skeleton"><i /><i /><i /><i /></div>;
-  if (query.isError) return <div className="inline-error">首页数据加载失败<button type="button" onClick={() => query.refetch()}>重新加载</button></div>;
+  if (query.isError) return <div className="inline-error" role="alert">首页数据加载失败<button type="button" onClick={() => query.refetch()}>重新加载</button></div>;
   const data = query.data;
   const latestFailedRun = data.recentRuns?.find((run) => run.status === "failed");
   const hermesNeedsAttention = hermesQuery.isError || (hermesQuery.data && hermesQuery.data.status !== "connected");

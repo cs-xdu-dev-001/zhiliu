@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { Route } from "wouter";
 
@@ -53,4 +54,18 @@ it("404时显示追踪记录不存在", async () => {
   renderPage();
 
   expect(await screen.findByText("追踪记录不存在或已删除")).toBeVisible();
+});
+
+it("来源较多时先限制首屏条目并允许展开", async () => {
+  get.mockResolvedValue({
+    ...trace,
+    items: Array.from({ length: 8 }, (_, index) => ({ ...trace.items[0], id: index + 1, title: `来源情报${index + 1}` })),
+  });
+  renderPage();
+
+  expect(await screen.findByText("来源情报1")).toBeVisible();
+  expect(screen.queryByText("来源情报7")).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "展开其余2条" }));
+  expect(screen.getByText("来源情报8")).toBeVisible();
+  expect(screen.getByRole("button", { name: "收起来源情报" })).toHaveAttribute("aria-expanded", "true");
 });

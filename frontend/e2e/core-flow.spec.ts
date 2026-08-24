@@ -203,16 +203,16 @@ test("阅读情报并触发订阅", async ({ page }, testInfo) => {
   await expect(page.getByText("订阅已创建")).toBeVisible();
   const subscriptionSearch = page.getByRole("searchbox", { name: "搜索订阅" });
   await subscriptionSearch.fill(subscriptionName);
-  await expect(page.getByText(subscriptionName)).toBeVisible();
+  await expect(page.getByRole("heading", { name: subscriptionName, exact: true })).toBeVisible();
   await capture(page, testInfo, "subscriptions-search");
   await page.getByTitle("暂停订阅").click();
-  await expect(page.getByRole("alertdialog", { name: `暂停${subscriptionName}` })).toBeVisible();
+  await expect(page.getByRole("alertdialog", { name: `暂停“${subscriptionName}”？` })).toBeVisible();
   await capture(page, testInfo, "subscription-pause-confirm");
   await page.getByRole("button", { name: "继续订阅" }).click();
   await page.getByRole("button", { name: "清除订阅搜索" }).click();
   await page.getByRole("button", { name: `立即执行${subscriptionName}` }).click();
   await expect(page.getByText(`${subscriptionName}已加入任务队列`)).toBeVisible();
-  await page.getByRole("link", { name: "任务记录" }).click();
+  await page.getByRole("link", { name: "任务收件箱" }).click();
   await expect(page.getByText(/已受理|处理中|已完成/).first()).toBeVisible();
   await capture(page, testInfo, "tasks");
   await page.locator(".task-row-link").first().click();
@@ -580,5 +580,5 @@ test("网络中断后提示并自动恢复", async ({ page, context }, testInfo)
 
   await context.setOffline(false);
   await page.evaluate(() => window.dispatchEvent(new Event("online")));
-  await expect(page.getByRole("status")).toContainText("连接已恢复");
+  await expect(page.locator(".service-status.recovered")).toContainText("连接已恢复");
 });

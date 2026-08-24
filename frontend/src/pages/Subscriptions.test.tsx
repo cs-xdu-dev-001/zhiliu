@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
@@ -164,9 +164,45 @@ it("停用订阅需要明确确认", async () => {
   await screen.findByText("Agent论文周报");
   await userEvent.click(screen.getByRole("checkbox", { name: "暂停Agent论文周报" }));
   expect(put).not.toHaveBeenCalled();
-  expect(screen.getByRole("alertdialog", { name: "暂停Agent论文周报" })).toBeVisible();
+  expect(screen.getByRole("alertdialog", { name: "暂停“Agent论文周报”？" })).toBeVisible();
   await userEvent.click(screen.getByRole("button", { name: "确认暂停" }));
   expect(put).toHaveBeenCalledWith("/api/subscriptions/7", expect.objectContaining({ enabled: false }));
+});
+
+it("暂停确认支持Escape并把焦点还给开关", async () => {
+  const record = {
+    id: 7, name: "Agent论文周报", kind: "paper", keywords: ["Agent"], schedule: "0 8 * * 1", prompt: "检索过去一周的重要论文", enabled: true, lastRunAt: null, nextRunAt: null, createdAt: "2026-08-01T00:00:00Z", updatedAt: "2026-08-01T00:00:00Z",
+  };
+  get.mockResolvedValue([record]);
+  render(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <Subscriptions />
+    </QueryClientProvider>,
+  );
+
+  const trigger = await screen.findByRole("checkbox", { name: "暂停Agent论文周报" });
+  await userEvent.click(trigger);
+  await waitFor(() => expect(screen.getByRole("button", { name: "继续订阅" })).toHaveFocus());
+  await userEvent.keyboard("{Escape}");
+  expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  expect(trigger).toHaveFocus();
+});
+
+it("订阅列表分页限制首屏渲染量", async () => {
+  get.mockResolvedValue(Array.from({ length: 21 }, (_, index) => ({
+    id: index + 1, name: `订阅${index + 1}`, kind: "news", keywords: [], schedule: "0 8 * * *", prompt: "检索更新", enabled: true, lastRunAt: null, nextRunAt: null, createdAt: "2026-08-01T00:00:00Z", updatedAt: "2026-08-01T00:00:00Z",
+  })));
+  render(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <Subscriptions />
+    </QueryClientProvider>,
+  );
+
+  expect(await screen.findByText("订阅1")).toBeVisible();
+  expect(screen.queryByText("订阅21")).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "下一页" }));
+  expect(screen.getByText("订阅21")).toBeVisible();
+  expect(screen.queryByText("订阅1")).not.toBeInTheDocument();
 });
 
 it("用独立视图切换订阅管理和Hermes运行设置", async () => {
