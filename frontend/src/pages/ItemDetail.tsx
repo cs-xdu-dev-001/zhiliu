@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Bookmark, Check, ChevronDown, CircleX, ExternalLink, FileText, GitBranch, History, Link2, Merge, Pencil, RefreshCw, SlidersHorizontal, Unlink, X } from "lucide-react";
+import { ArrowLeft, Bookmark, Check, ChevronDown, CircleX, ExternalLink, FileText, GitBranch, History, Link2, Merge, Pencil, RefreshCw, SlidersHorizontal, Tag, Unlink, X } from "lucide-react";
 import { FormEvent, useState } from "react";
 import { Link, useParams, useSearchParams } from "wouter";
 
@@ -17,6 +17,16 @@ const revisionLabels: Record<ItemRevision["action"], string> = {
   merge_target: "接收重复情报",
   source_unavailable: "标记原文失效",
   source_restored: "恢复原文",
+  state_updated: "更新状态",
+  tags_replaced: "更新标签",
+  tagged: "添加标签",
+  untagged: "移除标签",
+  bulk_read: "批量标记已读",
+  bulk_unread: "批量恢复未读",
+  bulk_save: "批量收藏",
+  bulk_unsave: "批量取消收藏",
+  bulk_ignore: "批量归档",
+  bulk_unignore: "批量恢复归档",
 };
 
 function safeBackHref(value: string | null) {
@@ -71,6 +81,8 @@ export function ItemDetail() {
   const [mergeTargetId, setMergeTargetId] = useState<number | null>(null);
   const [showAllRevisions, setShowAllRevisions] = useState(false);
   const [form, setForm] = useState({ title: "", summary: "", kind: "news" as IntelligenceKind });
+  const [tagEditorOpen, setTagEditorOpen] = useState(false);
+  const [tagDraft, setTagDraft] = useState("");
   const [notice, setNotice] = useState<{ tone: "success" | "error"; text: string } | null>(null);
 
   const query = useQuery({
@@ -130,6 +142,18 @@ export function ItemDetail() {
     onMutate: () => setNotice(null),
     onSuccess: () => setNotice({ tone: "success", text: "已交给Hermes重新整理，可在任务记录查看进度" }),
   });
+  const updateTags = useMutation({
+    mutationFn: () => api.put<IntelligenceItem>(`/api/items/${id}/tags`, {
+      tags: tagDraft.split(/[,，]/).map((value) => value.trim()).filter(Boolean),
+    }),
+    onMutate: () => setNotice(null),
+    onSuccess: () => {
+      setTagEditorOpen(false);
+      setNotice({ tone: "success", text: "标签已更新" });
+      refreshItem();
+      queryClient.invalidateQueries({ queryKey: ["item-tags"] });
+    },
+  });
   const avoidSource = useMutation({
     mutationFn: ({ source, kind, itemId }: { source: string; kind: IntelligenceKind; itemId: number }) => api.post<HermesPreference>("/api/preferences", {
       scope: "source",
@@ -166,7 +190,7 @@ export function ItemDetail() {
   const date = item.publishedAt ?? item.createdAt;
   const merged = item.mergedIntoId !== null;
   const subscriptionOrigin = item.publications.some((publication) => publication.origin === "subscription-hermes");
-  const busy = update.isPending || edit.isPending || validity.isPending || merge.isPending || rerun.isPending || avoidSource.isPending || sourceAvailability.isPending;
+  const busy = update.isPending || edit.isPending || updateTags.isPending || validity.isPending || merge.isPending || rerun.isPending || avoidSource.isPending || sourceAvailability.isPending;
   const sourceUrl = item.sourceUnavailable ? null : safeExternalUrl(item.url);
   const sourcePreference = preferenceSource(item.source);
   const sourceLabel = item.source.trim() || "来源未标注";
@@ -209,15 +233,17 @@ export function ItemDetail() {
           <h3 id="reason-heading">值得关注</h3>
           <p>{item.reason || "暂无补充判断"}</p>
         </section>
-        <div className="keyword-row">{item.keywords.map((keyword) => <span key={keyword}>{keyword}</span>)}</div>
+        <div className="keyword-row">{item.tags.map((tag) => <span className="item-tag" key={tag}>{tag}</span>)}{item.keywords.map((keyword) => <span key={keyword}>{keyword}</span>)}</div>
       </div>
 
       <section className="maintenance-section" aria-labelledby="maintenance-heading">
         <div className="lineage-heading"><Pencil size={19} /><h2 id="maintenance-heading">内容维护</h2></div>
         <div className="maintenance-actions maintenance-primary-actions">
           <button disabled={busy || merged} onClick={(event) => openEditor(event.currentTarget)}><Pencil size={17} />编辑内容</button>
+          <button disabled={busy || merged} onClick={() => { setTagDraft(item.tags.join("，")); setTagEditorOpen((current) => !current); }}><Tag size={17} />编辑标签</button>
           {subscriptionOrigin && item.subscriptionId > 0 && <button disabled={busy || merged} onClick={() => rerun.mutate(item.subscriptionId)}><RefreshCw size={17} />重新整理</button>}
         </div>
+        {tagEditorOpen && <form className="tag-editor" onSubmit={(event) => { event.preventDefault(); updateTags.mutate(); }}><input autoFocus aria-label="情报标签" maxLength={400} placeholder="标签，用逗号分隔；清空可移除全部" value={tagDraft} onChange={(event) => setTagDraft(event.target.value)} /><button className="primary-compact" disabled={updateTags.isPending}>保存标签</button><button type="button" onClick={() => setTagEditorOpen(false)}>取消</button></form>}
         <details className="maintenance-more">
           <summary>更多维护<ChevronDown size={17} aria-hidden="true" /></summary>
           <div className="maintenance-actions maintenance-secondary-actions">
@@ -230,9 +256,9 @@ export function ItemDetail() {
         {!subscriptionOrigin && !merged && <p className="maintenance-guidance">微信Hermes内容需回到微信重新发起，避免知流重复调用Hermes。</p>}
       </section>
 
-      {(notice || validity.isError || rerun.isError || avoidSource.isError || sourceAvailability.isError) && (
+      {(notice || updateTags.isError || validity.isError || rerun.isError || avoidSource.isError || sourceAvailability.isError) && (
         <div className={`action-notice ${notice?.tone ?? "error"}`} role={notice?.tone === "success" ? "status" : "alert"}>
-          {notice?.text ?? errorText(validity.error ?? rerun.error ?? avoidSource.error ?? sourceAvailability.error)}
+          {notice?.text ?? errorText(updateTags.error ?? validity.error ?? rerun.error ?? avoidSource.error ?? sourceAvailability.error)}
         </div>
       )}
 

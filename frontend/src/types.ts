@@ -29,12 +29,13 @@ export interface IntelligenceItem {
   isStale?: boolean;
   sourceUnavailable?: boolean;
   mergedIntoId: number | null;
+  tags: string[];
   createdAt: string;
 }
 
 export interface ItemRevision {
   id: number;
-  action: "edited" | "invalidated" | "restored" | "merged" | "merge_target" | "source_unavailable" | "source_restored";
+  action: string;
   before: Record<string, unknown> | null;
   after: Record<string, unknown> | null;
   createdAt: string;
@@ -112,12 +113,23 @@ export interface SourceItem {
   sourceUnavailable?: boolean;
 }
 
-export type BulkItemAction = "read" | "unread" | "save" | "unsave" | "ignore" | "unignore" | "invalidate" | "restore";
+export type BulkItemAction = "read" | "unread" | "save" | "unsave" | "ignore" | "unignore" | "invalidate" | "restore" | "tag" | "untag";
 
 export interface ItemBulkResult {
+  operationId: number;
   requested: number;
   updated: number;
+  updatedIds: number[];
   skipped: Array<{ id: number; reason: string }>;
+  duplicate: boolean;
+}
+
+export interface SavedView {
+  id: number;
+  name: string;
+  query: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface PublicationSummary {

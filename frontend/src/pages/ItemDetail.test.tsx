@@ -19,6 +19,7 @@ const item = {
   publishedAt: "2026-08-01T00:00:00Z", keywords: ["Agent", "MCP"], reason: "影响Agent开发工作流",
   importance: 0.9, isRead: false, isSaved: false, isIgnored: false, createdAt: "2026-08-01T00:00:00Z",
   isInvalid: false, mergedIntoId: null, mergedInto: null,
+  tags: ["重点"],
   traceAvailable: true,
   revisions: [{ id: 11, action: "edited", before: { title: "旧标题" }, after: { title: "Agent框架发布新版本" }, createdAt: "2026-08-01T02:00:00Z" }],
   publications: [{
@@ -60,6 +61,19 @@ it("可以在详情收藏", async () => {
   await screen.findByText("完整摘要。");
   await userEvent.click(screen.getByRole("button", { name: "收藏" }));
   expect(patch).toHaveBeenCalledWith("/api/items/1", { isSaved: true });
+});
+
+it("可以在详情编辑标签", async () => {
+  put.mockResolvedValue({ ...item, tags: ["重点", "Agent"] });
+  renderPage();
+  await userEvent.click(await screen.findByRole("button", { name: "编辑标签" }));
+  const input = screen.getByRole("textbox", { name: "情报标签" });
+  await userEvent.clear(input);
+  await userEvent.type(input, "重点，Agent");
+  await userEvent.click(screen.getByRole("button", { name: "保存标签" }));
+
+  expect(put).toHaveBeenCalledWith("/api/items/1/tags", { tags: ["重点", "Agent"] });
+  expect(await screen.findByRole("status")).toHaveTextContent("标签已更新");
 });
 
 it("在详情提示可能过期", async () => {

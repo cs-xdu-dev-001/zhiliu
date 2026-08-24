@@ -86,7 +86,7 @@ test("阅读情报并触发订阅", async ({ page }, testInfo) => {
   await page.getByRole("link", { name: "情报", exact: true }).click();
   await expect(page.getByRole("button", { name: "招聘" })).toBeVisible();
   const sortFilter = page.getByRole("combobox", { name: "情报排序" });
-  const stateFilter = page.getByRole("combobox", { name: "情报状态" });
+  const stateFilter = page.locator(".filter-menu summary").filter({ hasText: "状态" });
   const timeFilter = page.getByRole("combobox", { name: "情报时间" });
   const sourceFilter = page.getByRole("combobox", { name: "情报来源" });
   await expect(sortFilter).toBeVisible();
@@ -111,7 +111,9 @@ test("阅读情报并触发订阅", async ({ page }, testInfo) => {
     await expect(page.locator(".item-card").first().getByText("收藏", { exact: true })).toBeVisible();
     await expect(page.locator(".item-card").first().getByText("原文", { exact: true })).toBeVisible();
   }
-  await stateFilter.selectOption("");
+  await stateFilter.click();
+  await page.getByRole("button", { name: "清除状态" }).click();
+  await stateFilter.click();
   await sourceFilter.selectOption("arXiv");
   await expect(page).toHaveURL(/source=arXiv/);
   await expect(page.getByRole("heading", { name: "Reliable Tool Use for Language Model Agents" })).toBeVisible();
@@ -259,18 +261,21 @@ test("识别并筛选可能过期、低优先级和原文失效内容", async ({
   });
   await page.goto("/feed?state=stale");
 
-  await expect(page.getByRole("combobox", { name: "情报状态" })).toHaveValue("stale");
+  await page.locator(".filter-menu summary").filter({ hasText: "状态" }).click();
+  await expect(page.getByRole("checkbox", { name: "可能过期" })).toBeChecked();
   await expect(page.locator(".stale-tag", { hasText: "可能过期" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "三十天前的产品公告" })).toBeVisible();
   await capture(page, testInfo, "feed-stale");
 
-  await page.getByRole("combobox", { name: "情报状态" }).selectOption("low");
+  await page.getByRole("checkbox", { name: "可能过期" }).uncheck();
+  await page.getByRole("checkbox", { name: "低优先级" }).check();
   await expect(page).toHaveURL(/state=low/);
   await expect(page.getByRole("heading", { name: "尚待观察的边缘线索" })).toBeVisible();
   await expect(page.locator(".importance")).toHaveText("低优先级");
   await capture(page, testInfo, "feed-low-priority");
 
-  await page.getByRole("combobox", { name: "情报状态" }).selectOption("source-unavailable");
+  await page.getByRole("checkbox", { name: "低优先级" }).uncheck();
+  await page.getByRole("checkbox", { name: "原文失效" }).check();
   await expect(page).toHaveURL(/state=source-unavailable/);
   await expect(page.getByRole("heading", { name: "原始页面已经删除" })).toBeVisible();
   await expect(page.locator(".source-failed-tag")).toHaveText("原文失效");
@@ -359,6 +364,11 @@ test("维护情报并保留修改记录", async ({ page }, testInfo) => {
   await page.getByRole("button", { name: "保存修改" }).click();
   await expect(page.getByText("内容已更新，修改记录已保留")).toBeVisible();
   await expect(page.getByText("编辑内容").last()).toBeVisible();
+
+  await page.getByRole("button", { name: "编辑标签" }).click();
+  await page.getByRole("textbox", { name: "情报标签" }).fill("重点，Agent");
+  await page.getByRole("button", { name: "保存标签" }).click();
+  await expect(page.getByText("标签已更新", { exact: true })).toBeVisible();
 
   await page.getByText("更多维护").click();
   await page.getByRole("button", { name: "少看此来源" }).click();

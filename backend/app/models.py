@@ -42,6 +42,16 @@ class Subscription(Base):
 
 class IntelligenceItem(Base):
     __tablename__ = "intelligence_items"
+    __table_args__ = (
+        Index(
+            "ix_intelligence_items_feed_default",
+            "is_invalid",
+            "merged_into_id",
+            "importance",
+            "created_at",
+            "id",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     subscription_id: Mapped[int] = mapped_column(ForeignKey("subscriptions.id"), index=True)
@@ -81,10 +91,30 @@ class IntelligenceItem(Base):
         remote_side="IntelligenceItem.id",
         foreign_keys=[merged_into_id],
     )
+    tags: Mapped[list["ItemTag"]] = relationship(
+        back_populates="item",
+        cascade="all, delete-orphan",
+        order_by="ItemTag.name",
+    )
+
+
+class ItemTag(Base):
+    __tablename__ = "item_tags"
+    __table_args__ = (Index("ix_item_tags_name_item", "name", "item_id"),)
+
+    item_id: Mapped[int] = mapped_column(
+        ForeignKey("intelligence_items.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    name: Mapped[str] = mapped_column(String(40), primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+    item: Mapped[IntelligenceItem] = relationship(back_populates="tags")
 
 
 class ItemRevision(Base):
     __tablename__ = "item_revisions"
+    __table_args__ = (Index("ix_item_revisions_item_created", "item_id", "created_at", "id"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     item_id: Mapped[int] = mapped_column(
@@ -262,6 +292,26 @@ class HermesPreference(Base):
     active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+
+class SavedView(Base):
+    __tablename__ = "saved_views"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    query_string: Mapped[str] = mapped_column(String(1500))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+
+class ItemBulkOperation(Base):
+    __tablename__ = "item_bulk_operations"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    idempotency_key: Mapped[str] = mapped_column(String(160), unique=True, index=True)
+    request_hash: Mapped[str] = mapped_column(String(64))
+    result_json: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 
 class HermesQualityDecision(Base):

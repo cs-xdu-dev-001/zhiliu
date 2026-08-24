@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Any, Literal
 
 from croniter import croniter
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic.alias_generators import to_camel
 
 
@@ -79,12 +79,16 @@ class ItemSourceAvailabilityUpdate(ApiModel):
     unavailable: bool
 
 
-BulkItemAction = Literal["read", "unread", "save", "unsave", "ignore", "unignore", "invalidate", "restore"]
+BulkItemAction = Literal[
+    "read", "unread", "save", "unsave", "ignore", "unignore", "invalidate", "restore", "tag", "untag"
+]
 
 
 class ItemBulkUpdate(ApiModel):
     ids: list[int] = Field(min_length=1, max_length=100)
     action: BulkItemAction
+    idempotency_key: str = Field(min_length=8, max_length=160)
+    tags: list[str] = Field(default_factory=list, max_length=10)
 
     @field_validator("ids")
     @classmethod
@@ -93,6 +97,22 @@ class ItemBulkUpdate(ApiModel):
             raise ValueError("情报ID必须为正整数")
         return list(dict.fromkeys(value))
 
+    @field_validator("tags")
+    @classmethod
+    def clean_tags(cls, value: list[str]) -> list[str]:
+        cleaned = list(dict.fromkeys(tag.strip() for tag in value if tag.strip()))
+        if any(len(tag) > 40 for tag in cleaned):
+            raise ValueError("单个标签不能超过40字符")
+        return cleaned
+
+    @model_validator(mode="after")
+    def validate_tags_for_action(self) -> "ItemBulkUpdate":
+        if self.action in {"tag", "untag"} and not self.tags:
+            raise ValueError("标签操作至少需要一个标签")
+        if self.action not in {"tag", "untag"} and self.tags:
+            raise ValueError("当前操作不接受标签")
+        return self
+
 
 class ItemBulkSkip(ApiModel):
     id: int
@@ -100,9 +120,24 @@ class ItemBulkSkip(ApiModel):
 
 
 class ItemBulkUpdateResponse(ApiModel):
+    operation_id: int
     requested: int
     updated: int
+    updated_ids: list[int]
     skipped: list[ItemBulkSkip]
+    duplicate: bool = False
+
+
+class ItemTagsUpdate(ApiModel):
+    tags: list[str] = Field(default_factory=list, max_length=20)
+
+    @field_validator("tags")
+    @classmethod
+    def clean_tags(cls, value: list[str]) -> list[str]:
+        cleaned = list(dict.fromkeys(tag.strip() for tag in value if tag.strip()))
+        if any(len(tag) > 40 for tag in cleaned):
+            raise ValueError("单个标签不能超过40字符")
+        return cleaned
 
 
 class ItemMergeRequest(ApiModel):
@@ -128,7 +163,27 @@ class IntelligenceItemResponse(ApiModel):
     is_stale: bool
     source_unavailable: bool
     merged_into_id: int | None
+    tags: list[str] = Field(default_factory=list)
     created_at: datetime
+
+
+class SavedViewPayload(ApiModel):
+    name: str = Field(min_length=1, max_length=80)
+    query: str = Field(default="", max_length=1500)
+
+    @field_validator("name")
+    @classmethod
+    def clean_name(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("视图名称不能为空")
+        return cleaned
+
+
+class SavedViewResponse(SavedViewPayload):
+    id: int
+    created_at: datetime
+    updated_at: datetime
 
 
 class ItemRevisionResponse(ApiModel):
@@ -217,7 +272,6 @@ class BriefingGenerationRequest(ApiModel):
         if any(item_id <= 0 for item_id in value):
             raise ValueError("情报ID必须为正整数")
         return list(dict.fromkeys(value))
-
 
 class BriefingRegenerationRequest(ApiModel):
     instruction: str = Field(default="", max_length=1000)

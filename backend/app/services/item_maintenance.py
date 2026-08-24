@@ -21,10 +21,13 @@ def item_snapshot(record: IntelligenceItem) -> dict[str, object]:
         "summary": record.summary,
         "kind": record.kind,
         "importance": record.importance,
+        "isRead": record.is_read,
+        "isSaved": record.is_saved,
         "isIgnored": record.is_ignored,
         "isInvalid": record.is_invalid,
         "sourceUnavailable": record.source_unavailable,
         "mergedIntoId": record.merged_into_id,
+        "tags": sorted(tag.name for tag in record.tags),
     }
 
 

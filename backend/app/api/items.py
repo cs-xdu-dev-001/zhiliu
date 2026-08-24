@@ -1,3 +1,4 @@
+import hashlib
 import json
 from datetime import datetime, timedelta, timezone
 from difflib import SequenceMatcher
@@ -5,11 +6,22 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session, selectinload
 
 from app.db import get_db
 from app.api.runs import serialize_task_run
-from app.models import Briefing, HermesPublication, IntelligenceItem, ItemRevision, PublicationItem, Subscription, TaskRun
+from app.models import (
+    Briefing,
+    HermesPublication,
+    IntelligenceItem,
+    ItemBulkOperation,
+    ItemRevision,
+    ItemTag,
+    PublicationItem,
+    Subscription,
+    TaskRun,
+)
 from app.schemas import (
     BriefingResponse,
     DashboardResponse,
@@ -23,6 +35,7 @@ from app.schemas import (
     ItemPage,
     ItemRevisionResponse,
     ItemStateUpdate,
+    ItemTagsUpdate,
     ItemSourceAvailabilityUpdate,
     ItemValidityUpdate,
     MergeCandidateResponse,
@@ -37,6 +50,8 @@ from app.services.quality import LOW_IMPORTANCE_THRESHOLD, STALE_DAYS, stale_ite
 router = APIRouter(prefix="/api", tags=["intelligence"])
 
 MERGE_CANDIDATE_MIN_SIMILARITY = 0.55
+
+
 def item_is_stale(record: IntelligenceItem) -> bool:
     threshold = STALE_DAYS.get(record.kind)
     if threshold is None:
@@ -67,6 +82,7 @@ def serialize_item(record: IntelligenceItem) -> IntelligenceItemResponse:
         is_stale=item_is_stale(record),
         source_unavailable=record.source_unavailable,
         merged_into_id=record.merged_into_id,
+        tags=sorted(tag.name for tag in record.tags),
         created_at=record.created_at,
     )
 
@@ -75,10 +91,11 @@ def serialize_item(record: IntelligenceItem) -> IntelligenceItemResponse:
 def list_items(
     db: Session = Depends(get_db),
     kind: str | None = None,
-    state: Literal["unread", "saved", "ignored", "invalid", "stale", "low", "source-unavailable"] | None = None,
+    state: list[Literal["unread", "saved", "ignored", "invalid", "stale", "low", "source-unavailable"]] = Query(default=[]),
     subscription_id: int | None = Query(default=None, alias="subscriptionId"),
     q: str | None = Query(default=None, max_length=200),
     source: str | None = Query(default=None, max_length=120),
+    tag: list[str] = Query(default=[]),
     days: int | None = Query(default=None, ge=1, le=3650),
     sort: Literal["importance", "newest", "oldest", "title"] = "importance",
     limit: int = Query(default=30, ge=1, le=100),
@@ -107,24 +124,30 @@ def list_items(
         filters.append(func.lower(IntelligenceItem.source) == source_filter.casefold())
     if days:
         filters.append(event_time >= datetime.now(timezone.utc) - timedelta(days=days))
-    if state == "invalid":
+    states = set(state)
+    tags = list(dict.fromkeys(value.strip() for value in tag if value.strip()))
+    if any(len(value) > 40 for value in tags):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="单个标签不能超过40字符")
+    for tag_name in tags:
+        filters.append(IntelligenceItem.tags.any(ItemTag.name == tag_name))
+    if "invalid" in states:
         filters.append(IntelligenceItem.is_invalid.is_(True))
     else:
         filters.extend([
             IntelligenceItem.is_invalid.is_(False),
             IntelligenceItem.merged_into_id.is_(None),
         ])
-    if state == "unread":
+    if "unread" in states:
         filters.extend([IntelligenceItem.is_read.is_(False), IntelligenceItem.is_ignored.is_(False)])
-    elif state == "saved":
+    if "saved" in states:
         filters.append(IntelligenceItem.is_saved.is_(True))
-    elif state == "ignored":
+    if "ignored" in states:
         filters.append(IntelligenceItem.is_ignored.is_(True))
-    elif state == "stale":
+    if "stale" in states:
         filters.append(stale_item_condition())
-    elif state == "low":
+    if "low" in states:
         filters.append(IntelligenceItem.importance < LOW_IMPORTANCE_THRESHOLD)
-    elif state == "source-unavailable":
+    if "source-unavailable" in states:
         filters.append(IntelligenceItem.source_unavailable.is_(True))
 
     total = db.scalar(select(func.count()).select_from(IntelligenceItem).where(*filters)) or 0
@@ -136,6 +159,7 @@ def list_items(
     }[sort]
     records = db.scalars(
         select(IntelligenceItem)
+        .options(selectinload(IntelligenceItem.tags))
         .where(*filters)
         .order_by(*order_by)
         .limit(limit)
@@ -159,12 +183,49 @@ def list_item_sources(db: Session = Depends(get_db)) -> list[str]:
 
 @router.post("/items/bulk", response_model=ItemBulkUpdateResponse)
 def bulk_update_items(payload: ItemBulkUpdate, db: Session = Depends(get_db)) -> ItemBulkUpdateResponse:
+    request_body = {
+        "ids": sorted(payload.ids),
+        "action": payload.action,
+        "tags": sorted(payload.tags),
+    }
+    request_hash = hashlib.sha256(
+        json.dumps(request_body, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    existing = db.scalar(
+        select(ItemBulkOperation).where(ItemBulkOperation.idempotency_key == payload.idempotency_key)
+    )
+    if existing is not None:
+        if existing.request_hash != request_hash:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="幂等键已用于不同的批量操作")
+        saved = ItemBulkUpdateResponse.model_validate_json(existing.result_json)
+        return saved.model_copy(update={"duplicate": True})
+
+    operation = ItemBulkOperation(
+        idempotency_key=payload.idempotency_key,
+        request_hash=request_hash,
+        result_json="{}",
+    )
+    db.add(operation)
+    try:
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        raced = db.scalar(
+            select(ItemBulkOperation).where(ItemBulkOperation.idempotency_key == payload.idempotency_key)
+        )
+        if raced is not None and raced.request_hash == request_hash:
+            saved = ItemBulkUpdateResponse.model_validate_json(raced.result_json)
+            return saved.model_copy(update={"duplicate": True})
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="批量操作冲突，请使用新幂等键") from None
+
     records = db.scalars(
-        select(IntelligenceItem).where(IntelligenceItem.id.in_(payload.ids))
+        select(IntelligenceItem)
+        .options(selectinload(IntelligenceItem.tags))
+        .where(IntelligenceItem.id.in_(payload.ids))
     ).all()
     by_id = {record.id: record for record in records}
     skipped: list[ItemBulkSkip] = []
-    updated = 0
+    updated_ids: list[int] = []
     state_actions: dict[str, tuple[str, bool]] = {
         "read": ("is_read", True),
         "unread": ("is_read", False),
@@ -181,23 +242,95 @@ def bulk_update_items(payload: ItemBulkUpdate, db: Session = Depends(get_db)) ->
         if record.merged_into_id is not None:
             skipped.append(ItemBulkSkip(id=item_id, reason="已合并，只读"))
             continue
+        before = item_snapshot(record)
         if payload.action in state_actions:
             field, value = state_actions[payload.action]
             if getattr(record, field) == value:
                 skipped.append(ItemBulkSkip(id=item_id, reason="无需修改"))
                 continue
             setattr(record, field, value)
-        else:
+        elif payload.action in {"invalidate", "restore"}:
             value = payload.action == "invalidate"
             if record.is_invalid == value:
                 skipped.append(ItemBulkSkip(id=item_id, reason="无需修改"))
                 continue
-            before = item_snapshot(record)
             record.is_invalid = value
-            add_revision(db, record, "invalidated" if value else "restored", before, item_snapshot(record))
-        updated += 1
-    db.commit()
-    return ItemBulkUpdateResponse(requested=len(payload.ids), updated=updated, skipped=skipped)
+        else:
+            current = {tag.name for tag in record.tags}
+            if payload.action == "tag":
+                additions = [name for name in payload.tags if name not in current]
+                if not additions:
+                    skipped.append(ItemBulkSkip(id=item_id, reason="无需修改"))
+                    continue
+                record.tags.extend(ItemTag(name=name) for name in additions)
+            else:
+                removals = {name for name in payload.tags if name in current}
+                if not removals:
+                    skipped.append(ItemBulkSkip(id=item_id, reason="无需修改"))
+                    continue
+                record.tags[:] = [tag_record for tag_record in record.tags if tag_record.name not in removals]
+        after = item_snapshot(record)
+        action = {
+            "invalidate": "invalidated",
+            "restore": "restored",
+            "tag": "tagged",
+            "untag": "untagged",
+        }.get(payload.action, f"bulk_{payload.action}")
+        add_revision(db, record, action, before, after)
+        updated_ids.append(item_id)
+
+    response = ItemBulkUpdateResponse(
+        operation_id=operation.id,
+        requested=len(payload.ids),
+        updated=len(updated_ids),
+        updated_ids=updated_ids,
+        skipped=skipped,
+    )
+    operation.result_json = response.model_dump_json(by_alias=False)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raced = db.scalar(
+            select(ItemBulkOperation).where(ItemBulkOperation.idempotency_key == payload.idempotency_key)
+        )
+        if raced is not None and raced.request_hash == request_hash:
+            saved = ItemBulkUpdateResponse.model_validate_json(raced.result_json)
+            return saved.model_copy(update={"duplicate": True})
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="批量操作冲突，请重试") from None
+    return response
+
+
+@router.put("/items/{item_id}/tags", response_model=IntelligenceItemResponse)
+def replace_item_tags(
+    item_id: int,
+    payload: ItemTagsUpdate,
+    db: Session = Depends(get_db),
+) -> IntelligenceItemResponse:
+    record = db.scalar(
+        select(IntelligenceItem)
+        .options(selectinload(IntelligenceItem.tags))
+        .where(IntelligenceItem.id == item_id)
+    )
+    if record is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="情报不存在")
+    if record.merged_into_id is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="已合并情报仅保留审计，不能修改标签")
+    before = item_snapshot(record)
+    current = {tag.name for tag in record.tags}
+    desired = set(payload.tags)
+    if current != desired:
+        record.tags[:] = [tag_record for tag_record in record.tags if tag_record.name in desired]
+        record.tags.extend(ItemTag(name=name) for name in payload.tags if name not in current)
+        add_revision(db, record, "tags_replaced", before, item_snapshot(record))
+        db.commit()
+        db.refresh(record)
+    return serialize_item(record)
+
+
+@router.get("/tags", response_model=list[str])
+def list_tags(db: Session = Depends(get_db)) -> list[str]:
+    return list(db.scalars(select(ItemTag.name).distinct().order_by(func.lower(ItemTag.name))).all())
 
 
 @router.get("/items/{item_id}", response_model=ItemDetailResponse)
@@ -263,10 +396,14 @@ def update_item_state(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="情报不存在")
     if record.merged_into_id is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="已合并情报仅保留审计，不能修改状态")
+    before = item_snapshot(record)
     for field in ("is_read", "is_saved", "is_ignored"):
         value = getattr(payload, field)
         if value is not None:
             setattr(record, field, value)
+    after = item_snapshot(record)
+    if before != after:
+        add_revision(db, record, "state_updated", before, after)
     db.commit()
     db.refresh(record)
     return serialize_item(record)
@@ -443,6 +580,8 @@ def merge_item(
     target.is_saved = target.is_saved or source.is_saved
     target.is_read = target.is_read and source.is_read
     target.is_ignored = target.is_ignored and source.is_ignored
+    target_tags = {tag.name for tag in target.tags}
+    target.tags.extend(ItemTag(name=tag.name) for tag in source.tags if tag.name not in target_tags)
     source.is_invalid = True
     source.merged_into_id = target.id
     add_revision(db, source, "merged", source_before, item_snapshot(source))

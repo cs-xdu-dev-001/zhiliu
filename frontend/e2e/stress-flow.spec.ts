@@ -18,7 +18,7 @@ test("超长、空摘要和未标注来源保持可读", async ({ page }) => {
     await route.fulfill({ response, json: payload });
   });
 
-  await page.goto("/feed?state=");
+  await page.goto("/feed?state=all");
   await expect(page.getByText("来源未标注").first()).toBeVisible();
   await expect(page.getByText("暂无摘要").first()).toBeVisible();
   await expectNoHorizontalOverflow(page);
@@ -64,7 +64,7 @@ test("报告创建超时后沿用同一请求标识重试", async ({ page }) => 
     await route.fulfill({ status: 202, json: { id: 9999 } });
   });
 
-  await page.goto("/feed?state=");
+  await page.goto("/feed?state=all");
   await page.getByRole("button", { name: "批量选择" }).click();
   await page.locator(".item-select-control input").first().check();
   const trigger = page.getByRole("button", { name: "生成报告" });

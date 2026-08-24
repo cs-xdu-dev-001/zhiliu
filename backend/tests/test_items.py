@@ -211,18 +211,24 @@ def test_bulk_item_action_updates_selected_items_and_reports_skips(
 
     response = client.post(
         "/api/items/bulk",
-        json={"ids": [seeded_item.id, merged.id, 999], "action": "save"},
+        json={
+            "ids": [seeded_item.id, merged.id, 999],
+            "action": "save",
+            "idempotencyKey": "bulk-save-items-1",
+        },
     )
 
     assert response.status_code == 200
-    assert response.json() == {
-        "requested": 3,
-        "updated": 1,
-        "skipped": [
-            {"id": merged.id, "reason": "已合并，只读"},
-            {"id": 999, "reason": "情报不存在"},
-        ],
-    }
+    body = response.json()
+    assert body["operationId"] > 0
+    assert body["requested"] == 3
+    assert body["updated"] == 1
+    assert body["updatedIds"] == [seeded_item.id]
+    assert body["duplicate"] is False
+    assert body["skipped"] == [
+        {"id": merged.id, "reason": "已合并，只读"},
+        {"id": 999, "reason": "情报不存在"},
+    ]
     db_session.refresh(seeded_item)
     db_session.refresh(merged)
     assert seeded_item.is_saved is True
@@ -232,11 +238,19 @@ def test_bulk_item_action_updates_selected_items_and_reports_skips(
 def test_bulk_invalid_and_restore_record_revisions(client: TestClient, db_session: Session, seeded_item) -> None:
     invalidated = client.post(
         "/api/items/bulk",
-        json={"ids": [seeded_item.id, seeded_item.id], "action": "invalidate"},
+        json={
+            "ids": [seeded_item.id, seeded_item.id],
+            "action": "invalidate",
+            "idempotencyKey": "bulk-invalidate-1",
+        },
     )
     restored = client.post(
         "/api/items/bulk",
-        json={"ids": [seeded_item.id], "action": "restore"},
+        json={
+            "ids": [seeded_item.id],
+            "action": "restore",
+            "idempotencyKey": "bulk-restore-1",
+        },
     )
 
     assert invalidated.status_code == 200
@@ -246,6 +260,87 @@ def test_bulk_invalid_and_restore_record_revisions(client: TestClient, db_sessio
     assert [revision.action for revision in db_session.query(ItemRevision).order_by(ItemRevision.id)] == [
         "invalidated", "restored",
     ]
+
+
+def test_item_tags_can_be_replaced_filtered_and_audited(
+    client: TestClient,
+    db_session: Session,
+    seeded_item,
+) -> None:
+    updated = client.put(
+        f"/api/items/{seeded_item.id}/tags",
+        json={"tags": [" 重点 ", "Agent", "重点"]},
+    )
+
+    assert updated.status_code == 200
+    assert updated.json()["tags"] == ["Agent", "重点"]
+    assert client.get("/api/tags").json() == ["Agent", "重点"]
+    assert client.get("/api/items", params=[("tag", "重点"), ("tag", "Agent")]).json()["total"] == 1
+    assert client.get("/api/items", params=[("tag", "重点"), ("tag", "缺失")]).json()["total"] == 0
+    revision = db_session.query(ItemRevision).order_by(ItemRevision.id.desc()).first()
+    assert revision is not None
+    assert revision.action == "tags_replaced"
+    assert "重点" in revision.after_json
+
+
+def test_list_items_combines_multiple_states(client: TestClient, db_session: Session, seeded_item) -> None:
+    seeded_item.is_saved = True
+    db_session.commit()
+
+    matched = client.get("/api/items", params=[("state", "unread"), ("state", "saved")])
+    missing = client.get("/api/items", params=[("state", "ignored"), ("state", "saved")])
+
+    assert matched.status_code == 200
+    assert matched.json()["total"] == 1
+    assert missing.json()["total"] == 0
+
+
+def test_bulk_tags_are_idempotent_and_return_changed_ids(client: TestClient, seeded_item) -> None:
+    payload = {
+        "ids": [seeded_item.id],
+        "action": "tag",
+        "tags": ["重点", "Agent"],
+        "idempotencyKey": "bulk-tag-items-1",
+    }
+
+    first = client.post("/api/items/bulk", json=payload)
+    duplicate = client.post("/api/items/bulk", json=payload)
+    conflict = client.post(
+        "/api/items/bulk",
+        json={**payload, "action": "untag"},
+    )
+
+    assert first.status_code == 200
+    assert first.json()["updatedIds"] == [seeded_item.id]
+    assert first.json()["duplicate"] is False
+    assert duplicate.status_code == 200
+    assert duplicate.json()["operationId"] == first.json()["operationId"]
+    assert duplicate.json()["duplicate"] is True
+    assert conflict.status_code == 409
+    assert client.get(f"/api/items/{seeded_item.id}").json()["tags"] == ["Agent", "重点"]
+
+
+def test_bulk_result_supports_inverse_undo(client: TestClient, seeded_item) -> None:
+    archived = client.post(
+        "/api/items/bulk",
+        json={
+            "ids": [seeded_item.id],
+            "action": "ignore",
+            "idempotencyKey": "bulk-archive-undo-1",
+        },
+    ).json()
+    restored = client.post(
+        "/api/items/bulk",
+        json={
+            "ids": archived["updatedIds"],
+            "action": "unignore",
+            "idempotencyKey": "bulk-archive-undo-2",
+        },
+    )
+
+    assert restored.status_code == 200
+    assert restored.json()["updatedIds"] == [seeded_item.id]
+    assert client.get(f"/api/items/{seeded_item.id}").json()["isIgnored"] is False
 
 
 def test_bulk_action_validates_ids_and_action(client: TestClient) -> None:

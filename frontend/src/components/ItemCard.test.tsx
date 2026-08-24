@@ -21,6 +21,7 @@ const item = {
   isIgnored: false,
   isInvalid: false,
   mergedIntoId: null,
+  tags: [],
   createdAt: "2026-08-01T00:00:00Z",
 };
 

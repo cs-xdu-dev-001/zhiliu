@@ -63,7 +63,7 @@ export function ItemCard({
         {!selectable && <span className="card-detail-cue">查看详情</span>}
       </Link>
       {!compact && <div className="item-footer">
-          <div className="keyword-row">{item.keywords.slice(0, 3).map((keyword) => <span key={keyword}>{keyword}</span>)}</div>
+          <div className="keyword-row">{(item.tags?.length ? item.tags : item.keywords).slice(0, 3).map((keyword) => <span className={item.tags?.length ? "item-tag" : undefined} key={keyword}>{keyword}</span>)}</div>
           <div className="item-actions">
             {onChange && <>
               <button disabled={busy} className={item.isSaved ? "selected" : ""} aria-pressed={item.isSaved} onClick={() => onChange({ isSaved: !item.isSaved })} aria-label={item.isSaved ? "取消收藏" : "收藏"} title={item.isSaved ? "取消收藏" : "收藏"}><Bookmark size={17} fill={item.isSaved ? "currentColor" : "none"} /><span className="action-text" aria-hidden="true">{item.isSaved ? "已收藏" : "收藏"}</span></button>

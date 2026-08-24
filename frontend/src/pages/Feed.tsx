@@ -1,12 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bookmark, CheckCheck, ChevronLeft, ChevronRight, CircleX, EyeOff, FileText, ListChecks, Search, X } from "lucide-react";
+import { Bookmark, CheckCheck, ChevronLeft, ChevronRight, CircleX, EyeOff, FileText, ListChecks, Plus, Search, Tag, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useSearchParams } from "wouter";
 
 import { api, ApiError } from "../api";
 import { EmptyState } from "../components/EmptyState";
 import { ItemCard } from "../components/ItemCard";
-import type { BulkItemAction, IntelligenceItem, ItemBulkResult, ItemPage, TaskRun } from "../types";
+import type { BulkItemAction, IntelligenceItem, ItemBulkResult, ItemPage, SavedView, TaskRun } from "../types";
 import { useModalDialog } from "../useModalDialog";
 
 const PAGE_SIZE = 20;
@@ -23,47 +23,71 @@ const sortOptions = [
   { value: "title", label: "标题" },
 ];
 const allowedKinds = new Set(categories.map((category) => category.value));
-const allowedStates = new Set(["", "unread", "saved", "ignored", "invalid", "stale", "low", "source-unavailable"]);
+const stateOptions = [
+  { value: "unread", label: "未读" },
+  { value: "saved", label: "收藏" },
+  { value: "stale", label: "可能过期" },
+  { value: "low", label: "低优先级" },
+  { value: "source-unavailable", label: "原文失效" },
+  { value: "ignored", label: "已归档" },
+  { value: "invalid", label: "无效" },
+];
+const allowedStates = new Set(stateOptions.map((option) => option.value));
 const allowedSorts = new Set(sortOptions.map((option) => option.value));
 const allowedDays = new Set(["", "7", "30", "90"]);
+type BulkRequest = { ids: number[]; action: BulkItemAction; tags?: string[]; idempotencyKey: string };
+
+const inverseActions: Partial<Record<BulkItemAction, BulkItemAction>> = {
+  read: "unread", unread: "read", save: "unsave", unsave: "save",
+  ignore: "unignore", unignore: "ignore", invalidate: "restore", restore: "invalidate",
+};
 
 export function Feed() {
   const [, navigate] = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const rawKind = searchParams.get("kind") ?? "";
-  const rawState = searchParams.get("state") ?? "unread";
+  const rawStates = searchParams.getAll("state");
   const rawSort = searchParams.get("sort") ?? "importance";
   const rawDays = searchParams.get("days") ?? "";
   const source = (searchParams.get("source") ?? "").slice(0, 120);
   const rawPage = Number(searchParams.get("page") ?? "1");
   const kind = allowedKinds.has(rawKind) ? rawKind : "";
-  const state = allowedStates.has(rawState) ? rawState : "unread";
+  const validStates = [...new Set(rawStates.filter((value) => allowedStates.has(value)))];
+  const states = rawStates.includes("all") ? [] : validStates.length ? validStates : ["unread"];
+  const tags = [...new Set(searchParams.getAll("tag").map((value) => value.slice(0, 40)).filter(Boolean))];
   const sort = allowedSorts.has(rawSort) ? rawSort : "importance";
   const days = allowedDays.has(rawDays) ? rawDays : "";
   const page = Number.isSafeInteger(rawPage) && rawPage > 0 ? rawPage : 1;
   const q = (searchParams.get("q") ?? "").slice(0, 200);
   const [searchDraft, setSearchDraft] = useState(q);
-  const [notice, setNotice] = useState<{ tone: "success" | "error"; text: string; undoIgnoredId?: number } | null>(null);
+  const [notice, setNotice] = useState<{ tone: "success" | "error"; text: string; undoIgnoredId?: number; undoBulk?: BulkRequest; retryBulk?: BulkRequest } | null>(null);
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [confirmAction, setConfirmAction] = useState<BulkItemAction | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
   const [reportInstruction, setReportInstruction] = useState("");
+  const [saveViewOpen, setSaveViewOpen] = useState(false);
+  const [viewName, setViewName] = useState("");
+  const [tagDraft, setTagDraft] = useState("");
   const reportRequestIdRef = useRef("");
   const selectAllRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
 
-  function setView(next: { kind?: string; state?: string; sort?: string; days?: string; source?: string; q?: string; page?: number }) {
+  function setView(next: { kind?: string; states?: string[]; tags?: string[]; sort?: string; days?: string; source?: string; q?: string; page?: number }) {
     const values = {
       kind: next.kind ?? kind,
-      state: next.state ?? state,
+      states: next.states ?? states,
+      tags: next.tags ?? tags,
       sort: next.sort ?? sort,
       days: next.days ?? days,
       source: next.source ?? source,
       q: next.q ?? q,
       page: next.page ?? page,
     };
-    const params = new URLSearchParams({ state: values.state });
+    const params = new URLSearchParams();
+    if (values.states.length) values.states.forEach((value) => params.append("state", value));
+    else params.set("state", "all");
+    values.tags.forEach((value) => params.append("tag", value));
     if (values.kind) params.set("kind", values.kind);
     if (values.q) params.set("q", values.q);
     if (values.sort !== "importance") params.set("sort", values.sort);
@@ -79,15 +103,16 @@ export function Feed() {
     if (nextQ === q) return;
     const timer = window.setTimeout(() => setView({ q: nextQ, page: 1 }), 300);
     return () => window.clearTimeout(timer);
-  }, [searchDraft, q, kind, state, sort, days, source]);
+  }, [searchDraft, q, kind, states.join("|"), tags.join("|"), sort, days, source]);
   useEffect(() => {
     setSelected(new Set());
     setConfirmAction(null);
     setNotice(null);
-  }, [kind, state, sort, days, source, q, page]);
+  }, [kind, states.join("|"), tags.join("|"), sort, days, source, q, page]);
 
   const itemQuery = new URLSearchParams();
-  if (state) itemQuery.set("state", state);
+  states.forEach((value) => itemQuery.append("state", value));
+  tags.forEach((value) => itemQuery.append("tag", value));
   itemQuery.set("sort", sort);
   itemQuery.set("limit", String(PAGE_SIZE));
   itemQuery.set("offset", String((page - 1) * PAGE_SIZE));
@@ -97,11 +122,15 @@ export function Feed() {
   if (source) itemQuery.set("source", source);
   const returnHref = `/feed${searchParams.toString() ? `?${searchParams.toString()}` : ""}`;
   const query = useQuery({
-    queryKey: ["items", kind, state, sort, days, source, q, page],
+    queryKey: ["items", kind, states, tags, sort, days, source, q, page],
     queryFn: () => api.get<ItemPage>(`/api/items?${itemQuery.toString()}`),
   });
   const sourceQuery = useQuery({ queryKey: ["item-sources"], queryFn: () => api.get<string[]>("/api/items/sources") });
+  const tagQuery = useQuery({ queryKey: ["item-tags"], queryFn: () => api.get<string[]>("/api/tags") });
+  const savedViewsQuery = useQuery({ queryKey: ["saved-views"], queryFn: () => api.get<SavedView[]>("/api/saved-views") });
   const sourceOptions = Array.isArray(sourceQuery.data) ? sourceQuery.data : [];
+  const tagOptions = Array.isArray(tagQuery.data) ? tagQuery.data : [];
+  const savedViews = Array.isArray(savedViewsQuery.data) ? savedViewsQuery.data : [];
   const update = useMutation({
     mutationFn: ({ id, patch }: { id: number; patch: Partial<IntelligenceItem> }) => api.patch(`/api/items/${id}`, patch),
     onMutate: () => setNotice(null),
@@ -117,21 +146,47 @@ export function Feed() {
     onError: () => setNotice({ tone: "error", text: "操作未完成，请重试" }),
   });
   const bulk = useMutation({
-    mutationFn: (action: BulkItemAction) => api.post<ItemBulkResult>("/api/items/bulk", { ids: [...selected], action }),
+    mutationFn: (request: BulkRequest) => api.post<ItemBulkResult>("/api/items/bulk", request),
     onMutate: () => setNotice(null),
-    onSuccess: (result) => {
+    onSuccess: (result, request) => {
       setConfirmAction(null);
-      setSelected(new Set(result.skipped.map((item) => item.id).filter((id) => selected.has(id))));
+      setSelected(new Set(result.skipped.map((item) => item.id).filter((id) => request.ids.includes(id))));
+      const inverse = inverseActions[request.action];
       setNotice({
         tone: "success",
         text: result.skipped.length
           ? `已处理${result.updated}条，${result.skipped.length}条未修改`
           : `已处理${result.updated}条`,
+        undoBulk: inverse && result.updatedIds.length ? {
+          ids: result.updatedIds,
+          action: inverse,
+          tags: request.tags,
+          idempotencyKey: crypto.randomUUID(),
+        } : undefined,
       });
       queryClient.invalidateQueries({ queryKey: ["items"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["item-tags"] });
     },
-    onError: () => setNotice({ tone: "error", text: "批量操作未完成，所选情报已保留，请重试" }),
+    onError: (_, request) => setNotice({ tone: "error", text: "批量操作未完成，所选情报已保留", retryBulk: request }),
+  });
+  const saveView = useMutation({
+    mutationFn: () => {
+      const params = new URLSearchParams(searchParams);
+      params.delete("page");
+      return api.post<SavedView>("/api/saved-views", { name: viewName.trim(), query: params.toString() });
+    },
+    onSuccess: () => {
+      setViewName("");
+      setSaveViewOpen(false);
+      setNotice({ tone: "success", text: "当前筛选已保存" });
+      queryClient.invalidateQueries({ queryKey: ["saved-views"] });
+    },
+    onError: (error) => setNotice({ tone: "error", text: error instanceof ApiError ? error.message : "保存视图失败" }),
+  });
+  const deleteView = useMutation({
+    mutationFn: (id: number) => api.delete(`/api/saved-views/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["saved-views"] }),
   });
   const generateReport = useMutation({
     mutationFn: () => api.post<TaskRun>("/api/briefings/generate", {
@@ -174,9 +229,18 @@ export function Feed() {
   useEffect(() => {
     if (query.data && page > totalPages) setView({ page: totalPages });
   }, [query.data, page, totalPages]);
-  const savedAction: BulkItemAction = state === "saved" ? "unsave" : "save";
-  const ignoredAction: BulkItemAction = state === "ignored" ? "unignore" : "ignore";
-  const invalidAction: BulkItemAction = state === "invalid" ? "restore" : "invalidate";
+  const savedAction: BulkItemAction = states.includes("saved") ? "unsave" : "save";
+  const ignoredAction: BulkItemAction = states.includes("ignored") ? "unignore" : "ignore";
+  const invalidAction: BulkItemAction = states.includes("invalid") ? "restore" : "invalidate";
+
+  function runBulk(action: BulkItemAction, bulkTags?: string[], ids = [...selected]) {
+    if (!ids.length) return;
+    bulk.mutate({ ids, action, tags: bulkTags?.length ? bulkTags : undefined, idempotencyKey: crypto.randomUUID() });
+  }
+
+  function toggleFilter(current: string[], value: string) {
+    return current.includes(value) ? current.filter((item) => item !== value) : [...current, value];
+  }
 
   function toggleAll(checked: boolean) {
     setSelected((current) => {
@@ -188,7 +252,7 @@ export function Feed() {
 
   function clearFilters() {
     setSearchDraft("");
-    setView({ kind: "", state: "unread", sort: "importance", days: "", source: "", q: "", page: 1 });
+    setView({ kind: "", states: ["unread"], tags: [], sort: "importance", days: "", source: "", q: "", page: 1 });
   }
 
   function requestProtectedAction(action: BulkItemAction) {
@@ -197,7 +261,7 @@ export function Feed() {
   }
 
   const confirmCopy = confirmAction === "ignore"
-    ? { message: `将${selected.size}条情报移到已忽略？`, button: "确认忽略" }
+    ? { message: `将${selected.size}条情报归档？`, button: "确认归档" }
     : { message: `将${selected.size}条情报标记无效？`, button: "确认标记无效" };
 
   return (
@@ -211,9 +275,7 @@ export function Feed() {
         </div>
         <div className="filter-selects">
           <select aria-label="情报排序" value={sort} onChange={(event) => setView({ sort: event.target.value, page: 1 })}>{sortOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
-          <select aria-label="情报状态" value={state} onChange={(event) => setView({ state: event.target.value, page: 1 })}>
-            <option value="">全部</option><option value="unread">未读</option><option value="saved">收藏</option><option value="stale">可能过期</option><option value="low">低优先级</option><option value="source-unavailable">原文失效</option><option value="ignored">已忽略</option><option value="invalid">无效</option>
-          </select>
+          <details className="filter-menu"><summary>状态{states.length ? ` · ${states.length}` : " · 全部"}</summary><div className="filter-menu-panel" aria-label="情报状态">{stateOptions.map((option) => <label key={option.value}><input type="checkbox" checked={states.includes(option.value)} onChange={() => setView({ states: toggleFilter(states, option.value), page: 1 })} />{option.label}</label>)}<button className="text-button" onClick={() => setView({ states: [], page: 1 })}>清除状态</button></div></details>
           <select aria-label="情报时间" value={days} onChange={(event) => setView({ days: event.target.value, page: 1 })}>
             <option value="">不限</option><option value="7">7天</option><option value="30">30天</option><option value="90">90天</option>
           </select>
@@ -222,7 +284,14 @@ export function Feed() {
             {source && !sourceOptions.includes(source) && <option value={source}>{source}</option>}
             {sourceOptions.map((option) => <option key={option} value={option}>{option}</option>)}
           </select>
+          <details className="filter-menu"><summary>标签{tags.length ? ` · ${tags.length}` : ""}</summary><div className="filter-menu-panel" aria-label="情报标签">{tagOptions.length ? tagOptions.map((option) => <label key={option}><input type="checkbox" checked={tags.includes(option)} onChange={() => setView({ tags: toggleFilter(tags, option), page: 1 })} />{option}</label>) : <span>暂无标签</span>}{tags.length > 0 && <button className="text-button" onClick={() => setView({ tags: [], page: 1 })}>清除标签</button>}</div></details>
         </div>
+      </div>
+      <div className="saved-view-bar" aria-label="保存的视图">
+        <div className="saved-view-list">
+          {savedViews.map((view) => <span className="saved-view-chip" key={view.id}><button onClick={() => setSearchParams(new URLSearchParams(view.query), { replace: true })}>{view.name}</button><button aria-label={`删除视图${view.name}`} disabled={deleteView.isPending} onClick={() => deleteView.mutate(view.id)}><Trash2 size={14} /></button></span>)}
+        </div>
+        {saveViewOpen ? <form className="save-view-form" onSubmit={(event) => { event.preventDefault(); if (viewName.trim()) saveView.mutate(); }}><input autoFocus aria-label="视图名称" maxLength={80} placeholder="给当前筛选命名" value={viewName} onChange={(event) => setViewName(event.target.value)} /><button type="submit" disabled={!viewName.trim() || saveView.isPending}>保存</button><button type="button" aria-label="取消保存视图" onClick={() => { setSaveViewOpen(false); setViewName(""); }}><X size={16} /></button></form> : <button className="save-view-trigger" onClick={() => setSaveViewOpen(true)}><Plus size={16} />保存当前筛选</button>}
       </div>
       <div className="feed-list-heading">
         <div className="section-count">{query.data ? `${query.data.total}条情报` : "正在同步"}{q ? ` · 搜索“${q}”` : ""}</div>
@@ -231,15 +300,16 @@ export function Feed() {
       {selectMode && (
         <div className="bulk-toolbar" role="group" aria-label="批量操作">
           {confirmAction ? (
-            <div className="bulk-confirm"><p>{confirmCopy.message}</p><button className="secondary-button" onClick={() => setConfirmAction(null)}>取消</button><button className="danger-button" disabled={bulk.isPending} onClick={() => bulk.mutate(confirmAction)}>{confirmCopy.button}</button></div>
+            <div className="bulk-confirm"><p>{confirmCopy.message}</p><button className="secondary-button" onClick={() => setConfirmAction(null)}>取消</button><button className="danger-button" disabled={bulk.isPending} onClick={() => runBulk(confirmAction)}>{confirmCopy.button}</button></div>
           ) : <>
             <label className="bulk-select-all"><input ref={selectAllRef} type="checkbox" checked={allSelected} onChange={(event) => toggleAll(event.target.checked)} disabled={pageIds.length === 0} />全选当前页</label>
             <span className="bulk-count">已选{selected.size}条</span>
             <div className="bulk-actions">
-              <button aria-label="标记所选已读" disabled={selected.size === 0 || bulk.isPending} onClick={() => bulk.mutate("read")}><CheckCheck size={17} /><span className="bulk-label-full">标记所选已读</span><span className="bulk-label-short">已读</span></button>
-              <button aria-label={savedAction === "save" ? "收藏所选" : "取消收藏所选"} disabled={selected.size === 0 || bulk.isPending} onClick={() => bulk.mutate(savedAction)}><Bookmark size={17} /><span className="bulk-label-full">{savedAction === "save" ? "收藏所选" : "取消收藏所选"}</span><span className="bulk-label-short">{savedAction === "save" ? "收藏" : "取消收藏"}</span></button>
-              <button aria-label={ignoredAction === "ignore" ? "忽略所选" : "取消忽略所选"} disabled={selected.size === 0 || bulk.isPending} onClick={() => ignoredAction === "ignore" ? requestProtectedAction("ignore") : bulk.mutate("unignore")}><EyeOff size={17} /><span className="bulk-label-full">{ignoredAction === "ignore" ? "忽略所选" : "取消忽略所选"}</span><span className="bulk-label-short">{ignoredAction === "ignore" ? "忽略" : "取消忽略"}</span></button>
-              <button aria-label={invalidAction === "invalidate" ? "标记所选无效" : "恢复所选有效"} disabled={selected.size === 0 || bulk.isPending} onClick={() => invalidAction === "invalidate" ? requestProtectedAction("invalidate") : bulk.mutate("restore")}><CircleX size={17} /><span className="bulk-label-full">{invalidAction === "invalidate" ? "标记所选无效" : "恢复所选有效"}</span><span className="bulk-label-short">{invalidAction === "invalidate" ? "无效" : "恢复"}</span></button>
+              <button aria-label="标记所选已读" disabled={selected.size === 0 || bulk.isPending} onClick={() => runBulk("read")}><CheckCheck size={17} /><span className="bulk-label-full">标记所选已读</span><span className="bulk-label-short">已读</span></button>
+              <button aria-label={savedAction === "save" ? "收藏所选" : "取消收藏所选"} disabled={selected.size === 0 || bulk.isPending} onClick={() => runBulk(savedAction)}><Bookmark size={17} /><span className="bulk-label-full">{savedAction === "save" ? "收藏所选" : "取消收藏所选"}</span><span className="bulk-label-short">{savedAction === "save" ? "收藏" : "取消收藏"}</span></button>
+              <details className="bulk-tag-menu"><summary aria-label="批量标签"><Tag size={17} /><span>标签</span></summary><div><input aria-label="批量标签内容" maxLength={200} placeholder="标签，用逗号分隔" value={tagDraft} onChange={(event) => setTagDraft(event.target.value)} /><button disabled={!tagDraft.trim() || selected.size === 0 || bulk.isPending} onClick={() => runBulk("tag", tagDraft.split(/[,，]/).map((value) => value.trim()).filter(Boolean))}>添加</button><button disabled={!tagDraft.trim() || selected.size === 0 || bulk.isPending} onClick={() => runBulk("untag", tagDraft.split(/[,，]/).map((value) => value.trim()).filter(Boolean))}>移除</button></div></details>
+              <button aria-label={ignoredAction === "ignore" ? "归档所选" : "恢复所选归档"} disabled={selected.size === 0 || bulk.isPending} onClick={() => ignoredAction === "ignore" ? requestProtectedAction("ignore") : runBulk("unignore")}><EyeOff size={17} /><span className="bulk-label-full">{ignoredAction === "ignore" ? "归档所选" : "恢复归档"}</span><span className="bulk-label-short">{ignoredAction === "ignore" ? "归档" : "恢复"}</span></button>
+              <button aria-label={invalidAction === "invalidate" ? "标记所选无效" : "恢复所选有效"} disabled={selected.size === 0 || bulk.isPending} onClick={() => invalidAction === "invalidate" ? requestProtectedAction("invalidate") : runBulk("restore")}><CircleX size={17} /><span className="bulk-label-full">{invalidAction === "invalidate" ? "标记所选无效" : "恢复所选有效"}</span><span className="bulk-label-short">{invalidAction === "invalidate" ? "无效" : "恢复"}</span></button>
               <button aria-label="生成报告" className="bulk-report-button" disabled={selected.size === 0 || selected.size > 20 || bulk.isPending} onClick={(event) => openReportDialog(event.currentTarget)}><FileText size={17} /><span className="bulk-label-full">生成报告</span><span className="bulk-label-short">报告</span></button>
             </div>
           </>}
@@ -248,6 +318,8 @@ export function Feed() {
       {notice && <div className={`action-notice ${notice.tone}`} role={notice.tone === "error" ? "alert" : "status"}>
         <span>{notice.text}</span>
         {notice.undoIgnoredId !== undefined && <button type="button" disabled={update.isPending} onClick={() => update.mutate({ id: notice.undoIgnoredId!, patch: { isIgnored: false } })}>撤销忽略</button>}
+        {notice.undoBulk && <button type="button" disabled={bulk.isPending} onClick={() => bulk.mutate(notice.undoBulk!)}>撤销</button>}
+        {notice.retryBulk && <button type="button" disabled={bulk.isPending} onClick={() => bulk.mutate(notice.retryBulk!)}>重试</button>}
       </div>}
       {query.isPending && <div className="list-skeleton"><i /><i /><i /></div>}
       {query.isError && <div className="inline-error" role="alert">情报加载失败。<button onClick={() => query.refetch()}>重新加载</button></div>}
