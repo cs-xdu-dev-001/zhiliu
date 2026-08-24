@@ -1,6 +1,7 @@
 import asyncio
 import json
 import time
+from collections.abc import Awaitable, Callable
 from datetime import datetime
 
 import httpx
@@ -125,12 +126,20 @@ class HermesClient:
         self._external_client = http_client
         self._headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
 
-    async def execute(self, prompt: str) -> HermesResult:
-        run_id, raw_output = await self._execute_raw(prompt, OUTPUT_INSTRUCTIONS)
+    async def execute(
+        self,
+        prompt: str,
+        heartbeat: Callable[[], Awaitable[None]] | None = None,
+    ) -> HermesResult:
+        run_id, raw_output = await self._execute_raw(prompt, OUTPUT_INSTRUCTIONS, heartbeat)
         return self._parse_result(run_id, raw_output)
 
-    async def execute_report(self, prompt: str) -> HermesReport:
-        run_id, raw_output = await self._execute_raw(prompt, REPORT_OUTPUT_INSTRUCTIONS)
+    async def execute_report(
+        self,
+        prompt: str,
+        heartbeat: Callable[[], Awaitable[None]] | None = None,
+    ) -> HermesReport:
+        run_id, raw_output = await self._execute_raw(prompt, REPORT_OUTPUT_INSTRUCTIONS, heartbeat)
         cleaned = self._clean_output(raw_output)
         try:
             payload = HermesReport.model_validate({"runId": run_id, "rawOutput": raw_output, **json.loads(cleaned)})
@@ -138,7 +147,12 @@ class HermesClient:
             raise HermesInvalidOutput("Hermes返回的报告不符合知流JSON协议") from exc
         return payload
 
-    async def _execute_raw(self, prompt: str, instructions: str) -> tuple[str, str]:
+    async def _execute_raw(
+        self,
+        prompt: str,
+        instructions: str,
+        heartbeat: Callable[[], Awaitable[None]] | None = None,
+    ) -> tuple[str, str]:
         owns_client = self._external_client is None
         client = self._external_client or httpx.AsyncClient(timeout=httpx.Timeout(10, read=30))
         try:
@@ -152,6 +166,8 @@ class HermesClient:
             deadline = time.monotonic() + self.timeout_seconds
 
             while time.monotonic() < deadline:
+                if heartbeat is not None:
+                    await heartbeat()
                 response = await client.get(f"{self.base_url}/v1/runs/{run_id}", headers=self._headers)
                 response.raise_for_status()
                 state = response.json()

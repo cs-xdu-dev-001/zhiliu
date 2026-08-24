@@ -184,11 +184,13 @@ export interface TaskRun {
   origin: "weixin-hermes" | "subscription-hermes" | "web-report";
   topic: string | null;
   requestSummary: string | null;
-  status: "queued" | "running" | "success" | "failed";
-  stage: "accepted" | "processing" | "publishing" | "completed" | "failed";
+  status: "queued" | "running" | "success" | "failed" | "cancelled";
+  stage: "accepted" | "processing" | "understanding" | "searching" | "organizing" | "publishing" | "completed" | "failed" | "cancelled" | "lost";
   resultSummary: string | null;
   startedAt: string;
+  heartbeatAt: string | null;
   finishedAt: string | null;
+  cancelledAt: string | null;
   durationMs: number | null;
   errorMessage: string | null;
   subscriptionName: string | null;

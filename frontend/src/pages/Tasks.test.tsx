@@ -36,10 +36,10 @@ it("status=failed时只展示失败任务", async () => {
   expect(await screen.findByText("连接失败")).toBeVisible();
   expect(get).toHaveBeenCalledWith("/api/runs?limit=20&offset=0&status=failed");
   expect(screen.getByText("失败")).toBeVisible();
-  expect(screen.queryByText("已完成")).not.toBeInTheDocument();
+  expect(document.querySelector(".task-row.success")).toBeNull();
   expect(screen.getByRole("link", { name: /微信检索任务/ })).toHaveAttribute("href", "/tasks/1");
-  expect(screen.getByRole("link", { name: "仅失败" })).toHaveClass("active");
-  expect(screen.getByRole("link", { name: "全部任务" })).toHaveAttribute("href", "/tasks");
+  expect(screen.getByRole("link", { name: "需处理" })).toHaveClass("active");
+  expect(screen.getByRole("link", { name: "全部" })).toHaveAttribute("href", "/tasks");
 });
 
 it("第二页使用稳定的服务端分页参数", async () => {
@@ -89,7 +89,7 @@ it("首次没有任务时提供微信入口", async () => {
     </QueryClientProvider>,
   );
 
-  expect(await screen.findByText("还没有任务记录")).toBeVisible();
+  expect(await screen.findByText("还没有任务")).toBeVisible();
   expect(screen.getByText(/从微信让Hermes整理内容/)).toBeVisible();
   expect(screen.getByRole("link", { name: "查看示例指令" })).toHaveAttribute("href", "/");
 });
@@ -129,6 +129,6 @@ it("成功状态不重复显示通用完成文案", async () => {
   );
 
   expect(await screen.findByText("完成任务")).toBeVisible();
-  expect(screen.getByText("已完成")).toBeVisible();
+  expect(screen.getAllByText("已完成")).toHaveLength(2);
   expect(screen.queryByText("任务已完成")).not.toBeInTheDocument();
 });

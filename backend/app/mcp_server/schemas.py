@@ -98,11 +98,22 @@ class TaskFailurePayload(McpModel):
     error_message: str = Field(min_length=1, max_length=1000)
 
 
+TaskProgressStage = Literal["understanding", "searching", "organizing", "publishing"]
+
+
+class TaskProgressPayload(McpModel):
+    trace_id: str = Field(min_length=8, max_length=160)
+    stage: TaskProgressStage
+    hermes_run_id: str | None = Field(default=None, max_length=255)
+
+
 class TaskFeedbackReceipt(McpModel):
     task_run_id: int
     trace_id: str
     status: Literal["running", "success", "failed"]
-    stage: Literal["processing", "completed", "failed"]
+    stage: Literal[
+        "processing", "understanding", "searching", "organizing", "publishing", "completed", "failed"
+    ]
     message: str
     task_url: str | None = None
     duplicate: bool = False

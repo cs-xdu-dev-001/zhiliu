@@ -5,7 +5,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.mcp_server.schemas import TaskFailurePayload, TaskStartPayload, PublishPayload
+from app.mcp_server.schemas import TaskFailurePayload, TaskProgressPayload, TaskStartPayload, PublishPayload
 from app.mcp_server.service import (
     AUTO_PROMPT,
     AUTO_SCHEDULE,
@@ -57,7 +57,7 @@ def test_weixin_task_moves_from_processing_to_completed(db_session: Session) -> 
     )
 
     assert started.status == "running"
-    assert started.stage == "processing"
+    assert started.stage == "understanding"
     assert started.task_url == f"https://zhiliu.example/tasks/{started.task_run_id}"
     task = db_session.get(TaskRun, started.task_run_id)
     assert task.origin == "weixin-hermes"
@@ -91,6 +91,36 @@ def test_weixin_task_moves_from_processing_to_completed(db_session: Session) -> 
     assert repeated.status == "success"
     assert repeated.stage == "completed"
     assert repeated.duplicate is True
+
+
+def test_weixin_task_progress_updates_stage_and_heartbeat(db_session: Session) -> None:
+    feedback = TaskFeedbackService(db_session)
+    started = feedback.begin(
+        TaskStartPayload(
+            traceId="trace-progress-20260824",
+            topic="进度测试",
+            kind="news",
+            requestSummary="整理进度测试内容",
+        )
+    )
+
+    receipt = feedback.progress(
+        TaskProgressPayload(
+            traceId="trace-progress-20260824",
+            stage="searching",
+            hermesRunId="hermes-progress-1",
+        )
+    )
+    task = db_session.get(TaskRun, started.task_run_id)
+
+    assert receipt.stage == "searching"
+    assert task.hermes_run_id == "hermes-progress-1"
+    assert task.heartbeat_at is not None
+
+    late = feedback.progress(
+        TaskProgressPayload(traceId="trace-progress-20260824", stage="understanding")
+    )
+    assert late.stage == "searching"
 
 
 def test_weixin_task_failure_is_visible_and_idempotent(db_session: Session) -> None:

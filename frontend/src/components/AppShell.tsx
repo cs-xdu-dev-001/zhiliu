@@ -1,4 +1,4 @@
-import { ArrowLeft, BookOpenText, CircleCheck, House, ListFilter, Radio, Search, Settings2 } from "lucide-react";
+import { ArrowLeft, BookOpenText, CircleCheck, House, Inbox, ListFilter, Radio, Search, Settings2 } from "lucide-react";
 import { useEffect } from "react";
 import { Link, Route, Switch, useLocation, useSearchParams } from "wouter";
 import { Feed } from "../pages/Feed";
@@ -20,7 +20,7 @@ const pageNames: Record<string, string> = {
   "/feed": "情报流",
   "/reports": "报告",
   "/settings": "订阅与任务",
-  "/tasks": "任务记录",
+  "/tasks": "任务收件箱",
   "/search": "搜索知流",
   "/quality": "内容质量",
 };
@@ -29,6 +29,7 @@ const desktopNav = [
   { to: "/", label: "首页", icon: House, end: true },
   { to: "/feed", label: "情报", icon: ListFilter },
   { to: "/reports", label: "报告", icon: BookOpenText },
+  { to: "/tasks", label: "收件箱", icon: Inbox },
   { to: "/quality", label: "质量", icon: CircleCheck },
   { to: "/settings", label: "设置", icon: Settings2 },
 ];
@@ -64,7 +65,7 @@ export function AppShell() {
   const settingsView = pathname === "/settings" ? searchParams.get("view") : null;
   const title = settingsView === "runtime" ? "Hermes与运行" : pageName(pathname);
   const isDetailPage = pathname.startsWith("/items/") || pathname.startsWith("/reports/") || pathname.startsWith("/traces/") || pathname.startsWith("/tasks/");
-  const hidesBottomNav = isDetailPage || pathname === "/tasks";
+  const hidesBottomNav = isDetailPage;
   const backHref = isDetailPage ? detailBack(pathname) : null;
 
   useEffect(() => {
@@ -78,7 +79,7 @@ export function AppShell() {
         <div className="sidebar-brand"><Radio size={20} /><strong>知流</strong></div>
         <nav aria-label="桌面导航">
           {desktopNav.map(({ to, label, icon: Icon, end }) => (
-            <Link key={to} href={to} aria-current={(end ? pathname === to : pathname.startsWith(to)) || (to === "/settings" && pathname.startsWith("/tasks")) ? "page" : undefined} className={(end ? pathname === to : pathname.startsWith(to)) || (to === "/settings" && pathname.startsWith("/tasks")) ? "active" : ""}>
+            <Link key={to} href={to} aria-current={(end ? pathname === to : pathname.startsWith(to)) ? "page" : undefined} className={(end ? pathname === to : pathname.startsWith(to)) ? "active" : ""}>
               <Icon size={18} /><span>{label}</span>
             </Link>
           ))}

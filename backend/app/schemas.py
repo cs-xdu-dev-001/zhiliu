@@ -262,7 +262,9 @@ class TraceTaskRunResponse(ApiModel):
     id: int
     status: str
     started_at: datetime
+    heartbeat_at: datetime | None = None
     finished_at: datetime | None
+    cancelled_at: datetime | None = None
 
 
 class TraceBriefingResponse(ApiModel):
@@ -389,7 +391,9 @@ class TaskRunResponse(ApiModel):
     stage: str = "accepted"
     result_summary: str | None = None
     started_at: datetime
+    heartbeat_at: datetime | None = None
     finished_at: datetime | None
+    cancelled_at: datetime | None = None
     duration_ms: int | None
     error_message: str | None
     subscription_name: str | None = None

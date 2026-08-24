@@ -87,3 +87,23 @@ it("失败的订阅任务可以重新排队并保留原任务", async () => {
   expect(post).toHaveBeenCalledWith("/api/runs/7/retry");
   expect(navigate).toHaveBeenCalledWith("/tasks/9");
 });
+
+it("排队任务可以取消", async () => {
+  get.mockResolvedValueOnce({
+    id: 7, subscriptionId: 2, retryOfId: null, subscriptionName: "Agent论文周报", hermesRunId: null,
+    traceId: null, origin: "subscription-hermes", topic: "待执行任务",
+    requestSummary: "检索过去一周Agent论文", status: "queued", stage: "accepted",
+    resultSummary: null, startedAt: "2026-08-01T09:00:00Z", heartbeatAt: null, finishedAt: null,
+    cancelledAt: null, durationMs: null, errorMessage: null, publicationId: null, briefingId: null,
+  });
+  post.mockResolvedValueOnce({ id: 7, status: "cancelled", stage: "cancelled" });
+
+  render(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <TaskDetail />
+    </QueryClientProvider>,
+  );
+  await userEvent.click(await screen.findByRole("button", { name: "取消排队" }));
+
+  expect(post).toHaveBeenCalledWith("/api/runs/7/cancel");
+});

@@ -75,9 +75,15 @@ test("提供键盘跳转正文入口", () => {
   expect(document.querySelector("main")).toHaveAttribute("id", "main-content");
 });
 
-test("手机主导航可直接进入内容质量", () => {
+test("手机主导航可直接进入任务收件箱", () => {
+  renderApp("/tasks");
+  const inboxLink = within(screen.getByRole("navigation", { name: "主导航" })).getByRole("link", { name: "收件箱" });
+  expect(inboxLink).toHaveAttribute("href", "/tasks");
+  expect(inboxLink).toHaveAttribute("aria-current", "page");
+});
+
+test("手机主导航保留内容质量入口", () => {
   renderApp("/quality");
   const qualityLink = within(screen.getByRole("navigation", { name: "主导航" })).getByRole("link", { name: "质量" });
-  expect(qualityLink).toHaveAttribute("href", "/quality");
   expect(qualityLink).toHaveAttribute("aria-current", "page");
 });

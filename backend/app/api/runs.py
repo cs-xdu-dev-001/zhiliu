@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -30,7 +31,9 @@ def _task_run_response(
         stage=record.stage,
         result_summary=record.result_summary,
         started_at=record.started_at,
+        heartbeat_at=record.heartbeat_at,
         finished_at=record.finished_at,
+        cancelled_at=record.cancelled_at,
         duration_ms=record.duration_ms,
         error_message=record.error_message,
         subscription_name=subscription.name if subscription else None,
@@ -178,14 +181,41 @@ def retry_failed_run(run_id: int, db: Session = Depends(get_db)) -> TaskRunRespo
     return serialize_task_run(db, retry)
 
 
+@router.post("/runs/{run_id}/cancel", response_model=TaskRunResponse)
+def cancel_queued_run(run_id: int, db: Session = Depends(get_db)) -> TaskRunResponse:
+    record = db.get(TaskRun, run_id)
+    if record is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务不存在")
+    if record.status == "cancelled":
+        return serialize_task_run(db, record)
+    if record.status != "queued":
+        detail = "任务已开始执行，当前无法安全取消" if record.status == "running" else "任务已经结束"
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail)
+
+    now = datetime.now(timezone.utc)
+    record.status = "cancelled"
+    record.stage = "cancelled"
+    record.cancelled_at = now
+    record.finished_at = now
+    record.duration_ms = max(0, int((now - record.started_at).total_seconds() * 1000))
+    record.error_message = None
+    db.commit()
+    return serialize_task_run(db, record)
+
+
 @router.get("/runs", response_model=TaskRunPage)
 def list_runs(
     db: Session = Depends(get_db),
     limit: int = Query(default=30, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
-    run_status: Literal["queued", "running", "success", "failed"] | None = Query(default=None, alias="status"),
+    run_status: Literal["queued", "running", "success", "failed", "cancelled"] | None = Query(default=None, alias="status"),
+    origin: Literal["weixin-hermes", "subscription-hermes", "web-report"] | None = Query(default=None),
 ) -> TaskRunPage:
-    filters = [TaskRun.status == run_status] if run_status else []
+    filters = []
+    if run_status:
+        filters.append(TaskRun.status == run_status)
+    if origin:
+        filters.append(TaskRun.origin == origin)
     total = db.scalar(select(func.count()).select_from(TaskRun).where(*filters)) or 0
     records = db.scalars(
         select(TaskRun)

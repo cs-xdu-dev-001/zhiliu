@@ -6,6 +6,7 @@ mcp_servers:
     tools:
       include:
         - zhiliu_begin_task
+        - zhiliu_update_task
         - zhiliu_publish
         - zhiliu_report_failure
         - zhiliu_create_monitor

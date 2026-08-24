@@ -1,8 +1,8 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-from sqlalchemy import select
+from sqlalchemy import or_, select, update
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -43,7 +43,9 @@ class DemoHermesClient:
     def __init__(self, subscription: Subscription) -> None:
         self.subscription = subscription
 
-    async def execute(self, _: str) -> HermesResult:
+    async def execute(self, _: str, heartbeat=None) -> HermesResult:
+        if heartbeat is not None:
+            await heartbeat()
         now = datetime.now(timezone.utc)
         title = f"{self.subscription.name}演示更新"
         return HermesResult(
@@ -71,7 +73,9 @@ class DemoHermesClient:
             raw_output='{"mode":"demo"}',
         )
 
-    async def execute_report(self, _: str):
+    async def execute_report(self, _: str, heartbeat=None):
+        if heartbeat is not None:
+            await heartbeat()
         from app.services.hermes import HermesReport
 
         now = datetime.now(timezone.utc)
@@ -85,6 +89,7 @@ class DemoHermesClient:
 
 
 async def process_queued_tasks() -> None:
+    sweep_lost_tasks()
     with SessionLocal() as lookup_db:
         task_ids = list(
             lookup_db.scalars(
@@ -98,11 +103,25 @@ async def process_queued_tasks() -> None:
             task = db.get(TaskRun, task_id)
             if task is None or task.status != "queued":
                 continue
+            claimed = db.execute(
+                update(TaskRun)
+                .where(TaskRun.id == task_id, TaskRun.status == "queued")
+                .values(status="running", stage="accepted", heartbeat_at=datetime.now(timezone.utc))
+            )
+            try:
+                db.commit()
+            except Exception:
+                db.rollback()
+                raise
+            if claimed.rowcount != 1:
+                continue
+            db.refresh(task)
             try:
                 client = HermesIntegrationService(db, settings).resolve_client(task.subscription, DemoHermesClient)
             except (HermesUnavailable, SecretDecryptionError) as exc:
                 task.status = "failed"
                 task.stage = "failed"
+                task.heartbeat_at = datetime.now(timezone.utc)
                 task.error_message = str(exc)[:2000]
                 task.finished_at = datetime.now(timezone.utc)
                 task.duration_ms = 0
@@ -116,6 +135,32 @@ async def process_queued_tasks() -> None:
                 await ReportService(db, client).execute_task(task.id)
             else:
                 await RunService(db, client).execute_task(task.id)
+
+
+def sweep_lost_tasks() -> int:
+    settings = get_settings()
+    stale_after = max(settings.hermes_timeout_seconds * 2, 600)
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=stale_after)
+    with SessionLocal() as db:
+        records = db.scalars(
+            select(TaskRun).where(
+                TaskRun.status == "running",
+                or_(
+                    TaskRun.heartbeat_at < cutoff,
+                    (TaskRun.heartbeat_at.is_(None) & (TaskRun.started_at < cutoff)),
+                ),
+            )
+        ).all()
+        now = datetime.now(timezone.utc)
+        for task in records:
+            task.status = "failed"
+            task.stage = "lost"
+            task.error_message = "任务长时间未上报进度，可能已中断"
+            task.finished_at = now
+            task.duration_ms = max(0, int((now - task.started_at).total_seconds() * 1000))
+        if records:
+            db.commit()
+        return len(records)
 
 
 def refresh_subscription_jobs() -> None:

@@ -13,6 +13,7 @@ from app.mcp_server.schemas import (
     PublishReceipt,
     TaskFailurePayload,
     TaskFeedbackReceipt,
+    TaskProgressPayload,
     TaskStartPayload,
 )
 from app.models import (
@@ -36,6 +37,14 @@ AUTO_CATEGORIES = {
 AUTO_SUBSCRIPTION_IDS = {"news": -1, "paper": -2, "job": -3}
 AUTO_SCHEDULE = "0 0 1 1 *"
 AUTO_PROMPT = "系统分类：保存Hermes微信一次性整理结果，不参与定时执行。"
+TASK_STAGE_ORDER = {
+    "accepted": 0,
+    "understanding": 1,
+    "processing": 1,
+    "searching": 2,
+    "organizing": 3,
+    "publishing": 4,
+}
 
 
 def elapsed_ms(started_at: datetime, finished_at: datetime) -> int:
@@ -88,11 +97,39 @@ class TaskFeedbackService:
             topic=payload.topic,
             request_summary=payload.request_summary,
             status="running",
-            stage="processing",
+            stage="understanding",
+            heartbeat_at=datetime.now(timezone.utc),
         )
         self.db.add(task)
-        self.db.commit()
+        try:
+            self.db.commit()
+        except IntegrityError:
+            self.db.rollback()
+            raced = self.db.scalar(select(TaskRun).where(TaskRun.trace_id == payload.trace_id))
+            if raced is None:
+                raise PublicationConflict("任务登记冲突，请沿用追踪号重试") from None
+            if (
+                raced.topic != payload.topic
+                or raced.request_summary != payload.request_summary
+                or raced.subscription.kind != payload.kind
+            ):
+                raise PublicationConflict("追踪号已用于不同任务，请生成新追踪号") from None
+            return self._receipt(raced, duplicate=True)
         self.db.refresh(task)
+        return self._receipt(task, duplicate=False)
+
+    def progress(self, payload: TaskProgressPayload) -> TaskFeedbackReceipt:
+        task = self.db.scalar(select(TaskRun).where(TaskRun.trace_id == payload.trace_id))
+        if task is None:
+            raise PublicationConflict("没有找到对应的知流任务，请先调用zhiliu_begin_task")
+        if task.status != "running":
+            raise PublicationConflict("任务已经结束，不能继续更新进度")
+        if payload.hermes_run_id:
+            task.hermes_run_id = payload.hermes_run_id
+        if TASK_STAGE_ORDER.get(payload.stage, 0) >= TASK_STAGE_ORDER.get(task.stage, 0):
+            task.stage = payload.stage
+        task.heartbeat_at = datetime.now(timezone.utc)
+        self.db.commit()
         return self._receipt(task, duplicate=False)
 
     def fail(self, payload: TaskFailurePayload) -> TaskFeedbackReceipt:
@@ -108,6 +145,7 @@ class TaskFeedbackService:
         task.status = "failed"
         task.stage = "failed"
         task.error_message = payload.error_message
+        task.heartbeat_at = datetime.now(timezone.utc)
         task.finished_at = datetime.now(timezone.utc)
         task.duration_ms = elapsed_ms(task.started_at, task.finished_at)
         self.db.commit()
@@ -116,11 +154,12 @@ class TaskFeedbackService:
     def _receipt(self, task: TaskRun, *, duplicate: bool) -> TaskFeedbackReceipt:
         failed = task.status == "failed"
         completed = task.status == "success"
+        stage = "failed" if failed else "completed" if completed else task.stage
         return TaskFeedbackReceipt(
             task_run_id=task.id,
             trace_id=task.trace_id or "",
             status="failed" if failed else "success" if completed else "running",
-            stage="failed" if failed else "completed" if completed else "processing",
+            stage=stage,
             message=(
                 task.error_message or "任务处理失败"
                 if failed
@@ -448,6 +487,7 @@ class PublicationService:
             task.hermes_run_id = payload.hermes_run_id or task.hermes_run_id
             task.status = "success"
             task.stage = "completed"
+            task.heartbeat_at = now
             task.result_summary = summary
             task.error_message = None
             task.finished_at = now

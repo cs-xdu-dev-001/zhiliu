@@ -107,7 +107,7 @@ hermes mcp list
 hermes skills list
 ```
 
-配置中的`http://127.0.0.1:8080/api/mcp`适用于Hermes和知流部署在同一台服务器、Web仅绑定本机8080端口的情况。验收时可直接在微信发送：“请检索今天最重要的三条Agent动态，整理好以后放进知流。”Hermes先调用`zhiliu_get_preferences`读取长期偏好，再调用`zhiliu_begin_task`登记处理中状态，完成后调用`zhiliu_publish`；任一步失败则调用`zhiliu_report_failure`。只有发布工具返回成功后才应确认写入，并把回执中的结果摘要、`briefingUrl`和`traceUrl`回复给用户。开始回执中的`taskUrl`可用于查看实时进度。
+配置中的`http://127.0.0.1:8080/api/mcp`适用于Hermes和知流部署在同一台服务器、Web仅绑定本机8080端口的情况。验收时可直接在微信发送：“请检索今天最重要的三条Agent动态，整理好以后放进知流。”Hermes先调用`zhiliu_get_preferences`读取长期偏好，再调用`zhiliu_begin_task`登记任务，并在检索、整理、写入阶段调用`zhiliu_update_task`上报进度，完成后调用`zhiliu_publish`；任一步失败则调用`zhiliu_report_failure`。只有发布工具返回成功后才应确认写入，并把回执中的结果摘要、`briefingUrl`和`traceUrl`回复给用户。开始回执中的`taskUrl`可用于查看实时进度。
 
 Hermes还可用`zhiliu_search`回答“知流里最近有哪些Agent框架更新”，用`zhiliu_save_preference`和`zhiliu_remove_preference`维护用户明确表达的长期偏好，并在情报ID唯一明确时用`zhiliu_update_item`修正内容。网页顶部搜索入口会同时检索情报和报告；“订阅与任务→Hermes偏好”可查看和维护同一组偏好。
 

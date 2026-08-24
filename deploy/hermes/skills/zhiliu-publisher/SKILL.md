@@ -22,6 +22,7 @@ description: 通过微信自然语言搜索、整理和维护知流内容，或�
 - Hermes网关能取得真实任务ID时传入`hermesRunId`；不能取得时省略，不得伪造。
 - 确认需要写入知流后，在开始检索前先调用`zhiliu_begin_task`，传入本次`traceId`、主题、分类和脱敏请求摘要；同一次任务重试必须复用该`traceId`。
 - `zhiliu_begin_task`成功只代表知流已受理，不代表内容已经写入。网关支持阶段性回复时，使用返回的`message`，并附上非空的`taskUrl`，告诉用户可以查看进度。
+- 开始后在进入检索、整理和写入时分别调用`zhiliu_update_task`，阶段使用`searching`、`organizing`和`publishing`；长时间操作也应重复上报当前阶段，避免知流将任务判为失联。
 - 整理完成后调用`zhiliu_publish`，必须沿用开始任务时的`traceId`。发布成功后用返回的`message`概括结果；依次附上非空的`briefingUrl`和`traceUrl`，让用户可直接查看结果和完整处理链路。
 - 开始任务后，如果检索、整理或发布失败，调用`zhiliu_report_failure`记录简短、可操作的失败原因，再告诉用户本次未完成。
 - 工具返回成功前，不得声称已经写入知流；失败时明确说明未写入。

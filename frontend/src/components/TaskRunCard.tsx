@@ -1,4 +1,4 @@
-import { CheckCircle2, CircleDashed, Clock3, XCircle } from "lucide-react";
+import { Ban, CheckCircle2, CircleDashed, Clock3, XCircle } from "lucide-react";
 import { Link } from "wouter";
 
 import type { TaskRun } from "../types";
@@ -8,14 +8,20 @@ export const taskStatusMeta = {
   running: { label: "处理中", icon: Clock3 },
   success: { label: "已完成", icon: CheckCircle2 },
   failed: { label: "失败", icon: XCircle },
+  cancelled: { label: "已取消", icon: Ban },
 };
 
 export const taskStageCopy: Record<TaskRun["stage"], string> = {
   accepted: "等待Hermes开始处理",
   processing: "Hermes正在理解、检索和整理",
+  understanding: "Hermes正在理解请求",
+  searching: "Hermes正在检索来源",
+  organizing: "Hermes正在整理内容",
   publishing: "正在写入知流",
   completed: "任务已完成",
   failed: "任务处理失败",
+  cancelled: "任务已取消，未交给Hermes执行",
+  lost: "任务长时间未上报进度，可能已中断",
 };
 
 export function taskMessage(run: TaskRun) {

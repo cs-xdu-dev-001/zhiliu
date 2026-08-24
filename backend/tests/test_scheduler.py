@@ -8,6 +8,7 @@ from app.core.crypto import SecretCipher, SecretDecryptionError
 from app.services.hermes import HermesClient, HermesUnavailable
 from app.services.hermes_integration import HermesIntegrationService
 import asyncio
+from datetime import datetime, timedelta, timezone
 from app.services import scheduler
 
 
@@ -137,4 +138,52 @@ def test_queue_subscription_is_idempotent_while_active(
 
     assert first.id == second.id
     assert db_session.scalar(select(func.count()).select_from(TaskRun)) == 1
+
+
+def test_sweep_marks_stale_running_task_as_lost(db_session, subscription, monkeypatch) -> None:
+    task = TaskRun(
+        subscription_id=subscription.id,
+        status="running",
+        stage="searching",
+        started_at=datetime.now(timezone.utc) - timedelta(minutes=20),
+        heartbeat_at=datetime.now(timezone.utc) - timedelta(minutes=11),
+    )
+    db_session.add(task)
+    db_session.commit()
+
+    class Factory:
+        def __enter__(self): return db_session
+        def __exit__(self, *args): return False
+
+    monkeypatch.setattr(scheduler, "SessionLocal", Factory)
+    monkeypatch.setattr(scheduler, "get_settings", lambda: Settings())
+
+    assert scheduler.sweep_lost_tasks() == 1
+    db_session.refresh(task)
+    assert task.status == "failed"
+    assert task.stage == "lost"
+    assert task.finished_at is not None
+
+
+def test_sweep_handles_legacy_running_task_without_heartbeat(db_session, subscription, monkeypatch) -> None:
+    task = TaskRun(
+        subscription_id=subscription.id,
+        status="running",
+        stage="processing",
+        started_at=datetime.now(timezone.utc) - timedelta(minutes=20),
+        heartbeat_at=None,
+    )
+    db_session.add(task)
+    db_session.commit()
+
+    class Factory:
+        def __enter__(self): return db_session
+        def __exit__(self, *args): return False
+
+    monkeypatch.setattr(scheduler, "SessionLocal", Factory)
+    monkeypatch.setattr(scheduler, "get_settings", lambda: Settings())
+
+    assert scheduler.sweep_lost_tasks() == 1
+    db_session.refresh(task)
+    assert task.stage == "lost"
 

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Bot, CheckCircle2, CircleDashed, Clock3, FileText, MessageCircle, Workflow, XCircle } from "lucide-react";
+import { ArrowLeft, Ban, Bot, CheckCircle2, CircleDashed, Clock3, FileText, MessageCircle, Search, Workflow, XCircle } from "lucide-react";
 import { Link, useLocation, useParams } from "wouter";
 
 import { api, ApiError } from "../api";
@@ -9,9 +9,14 @@ import type { TaskRun } from "../types";
 const stageIcon = {
   accepted: CircleDashed,
   processing: Bot,
+  understanding: Bot,
+  searching: Search,
+  organizing: Bot,
   publishing: Workflow,
   completed: CheckCircle2,
   failed: XCircle,
+  cancelled: Ban,
+  lost: XCircle,
 };
 
 export function TaskDetail() {
@@ -28,6 +33,13 @@ export function TaskDetail() {
     onSuccess: (nextRun) => {
       queryClient.invalidateQueries({ queryKey: ["runs"] });
       navigate(`/tasks/${nextRun.id}`);
+    },
+  });
+  const cancel = useMutation({
+    mutationFn: () => api.post<TaskRun>(`/api/runs/${id}/cancel`),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(["task-run", id], updated);
+      queryClient.invalidateQueries({ queryKey: ["runs"] });
     },
   });
 
@@ -53,6 +65,8 @@ export function TaskDetail() {
           <span className="task-detail-status"><StatusIcon size={17} />{status.label}</span>
         </div>
         <p>{taskMessage(run)}</p>
+        {run.status === "queued" && <div className="task-header-actions"><button className="secondary-compact danger-action" disabled={cancel.isPending} onClick={() => cancel.mutate()}>{cancel.isPending ? "正在取消" : "取消排队"}</button></div>}
+        {cancel.isError && <p className="form-error" role="alert">取消失败，任务可能已经开始执行，请刷新确认。</p>}
       </header>
 
       <section className="task-detail-section">
@@ -66,6 +80,7 @@ export function TaskDetail() {
         <dl className="task-facts">
           <div><dt>开始时间</dt><dd>{new Date(run.startedAt).toLocaleString("zh-CN")}</dd></div>
           {run.finishedAt && <div><dt>完成时间</dt><dd>{new Date(run.finishedAt).toLocaleString("zh-CN")}</dd></div>}
+          {run.heartbeatAt && run.status === "running" && <div><dt>最近进度</dt><dd>{new Date(run.heartbeatAt).toLocaleString("zh-CN")}</dd></div>}
           {run.durationMs !== null && <div><dt>处理耗时</dt><dd>{(run.durationMs / 1000).toFixed(1)}秒</dd></div>}
           {run.retryOfId && <div><dt>重试来源</dt><dd><Link href={`/tasks/${run.retryOfId}`}>任务#{run.retryOfId}</Link></dd></div>}
         </dl>

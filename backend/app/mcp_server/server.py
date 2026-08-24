@@ -29,6 +29,7 @@ from app.mcp_server.schemas import (
     ItemFeedbackReceipt,
     TaskFailurePayload,
     TaskFeedbackReceipt,
+    TaskProgressPayload,
     TaskStartPayload,
 )
 from app.mcp_server.service import MonitorService, PublicationService, TaskFeedbackService
@@ -73,6 +74,19 @@ def build_mcp_server(
         )
         with session_factory() as db:
             return TaskFeedbackService(db, public_base_url=public_base_url).begin(payload)
+
+    @server.tool(name="zhiliu_update_task")
+    def zhiliu_update_task(
+        traceId: str,
+        stage: str,
+        hermesRunId: str | None = None,
+    ) -> TaskFeedbackReceipt:
+        """任务推进到理解、检索、整理或写入阶段时更新进度与心跳。"""
+        payload = TaskProgressPayload.model_validate(
+            {"traceId": traceId, "stage": stage, "hermesRunId": hermesRunId}
+        )
+        with session_factory() as db:
+            return TaskFeedbackService(db, public_base_url=public_base_url).progress(payload)
 
     @server.tool(name="zhiliu_publish")
     def zhiliu_publish(

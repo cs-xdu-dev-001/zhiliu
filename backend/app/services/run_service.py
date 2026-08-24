@@ -1,4 +1,5 @@
 import hashlib
+import inspect
 import json
 import time
 from datetime import datetime, timezone
@@ -50,7 +51,8 @@ class RunService:
             raise ValueError(f"TaskRun {task_id} does not exist")
 
         task.status = "running"
-        task.stage = "processing"
+        task.stage = "searching"
+        task.heartbeat_at = datetime.now(timezone.utc)
         task.origin = "subscription-hermes"
         task.topic = task.topic or task.subscription.name
         task.request_summary = task.request_summary or task.subscription.prompt[:1000]
@@ -60,7 +62,14 @@ class RunService:
 
         retrying = False
         try:
-            result = await self.hermes_client.execute(task.subscription.prompt)
+            async def heartbeat() -> None:
+                task.heartbeat_at = datetime.now(timezone.utc)
+                self.db.commit()
+
+            if "heartbeat" in inspect.signature(self.hermes_client.execute).parameters:
+                result = await self.hermes_client.execute(task.subscription.prompt, heartbeat=heartbeat)
+            else:
+                result = await self.hermes_client.execute(task.subscription.prompt)
             task.hermes_run_id = result.run_id
             task.raw_output = result.raw_output
             task.stage = "publishing"
@@ -140,6 +149,7 @@ class RunService:
             task.subscription.last_run_at = datetime.now(timezone.utc)
             task.status = "success"
             task.stage = "completed"
+            task.heartbeat_at = datetime.now(timezone.utc)
             task.result_summary = (
                 f"新增{inserted}条情报，复用{len(resolved_items) - inserted}条，"
                 f"生成报告《{briefing.title}》"
@@ -153,6 +163,7 @@ class RunService:
                 task.retry_count += 1
                 task.status = "queued"
                 task.stage = "accepted"
+                task.heartbeat_at = None
                 task.error_message = f"第{task.retry_count}次尝试失败，将自动重试：{str(exc)[:1800]}"
                 task.finished_at = None
                 task.duration_ms = None
@@ -160,6 +171,7 @@ class RunService:
             else:
                 task.status = "failed"
                 task.stage = "failed"
+                task.heartbeat_at = datetime.now(timezone.utc)
                 task.error_message = str(exc)[:2000]
         except Exception as exc:
             self.db.rollback()
@@ -168,6 +180,7 @@ class RunService:
                 raise
             task.status = "failed"
             task.stage = "failed"
+            task.heartbeat_at = datetime.now(timezone.utc)
             task.error_message = str(exc)[:2000]
         finally:
             if not retrying:

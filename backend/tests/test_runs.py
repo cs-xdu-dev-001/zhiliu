@@ -230,3 +230,41 @@ def test_run_list_query_count_does_not_grow_with_records(
     assert len(response.json()["items"]) == 8
     assert len(statements) == 4
 
+
+def test_queued_run_can_be_cancelled_idempotently(client: TestClient, db_session, subscription) -> None:
+    task = TaskRun(subscription_id=subscription.id, status="queued", stage="accepted")
+    db_session.add(task)
+    db_session.commit()
+
+    first = client.post(f"/api/runs/{task.id}/cancel")
+    second = client.post(f"/api/runs/{task.id}/cancel")
+
+    assert first.status_code == 200
+    assert first.json()["status"] == "cancelled"
+    assert first.json()["stage"] == "cancelled"
+    assert first.json()["cancelledAt"] is not None
+    assert second.status_code == 200
+
+
+def test_running_run_cannot_be_cancelled(client: TestClient, running_task) -> None:
+    response = client.post(f"/api/runs/{running_task.id}/cancel")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "任务已开始执行，当前无法安全取消"
+
+
+def test_run_list_filters_by_origin(client: TestClient, db_session, subscription) -> None:
+    db_session.add_all(
+        [
+            TaskRun(subscription_id=subscription.id, origin="weixin-hermes"),
+            TaskRun(subscription_id=subscription.id, origin="web-report"),
+        ]
+    )
+    db_session.commit()
+
+    response = client.get("/api/runs?origin=weixin-hermes")
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 1
+    assert response.json()["items"][0]["origin"] == "weixin-hermes"
+

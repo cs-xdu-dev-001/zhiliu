@@ -1,4 +1,5 @@
 import hashlib
+import inspect
 import json
 import re
 import time
@@ -58,7 +59,8 @@ class ReportService:
             raise ValueError(f"TaskRun {task_id} does not exist")
 
         task.status = "running"
-        task.stage = "processing"
+        task.stage = "organizing"
+        task.heartbeat_at = datetime.now(timezone.utc)
         task.error_message = None
         self.db.commit()
         started = time.perf_counter()
@@ -82,9 +84,15 @@ class ReportService:
             if not resolved:
                 raise ValueError("报告任务没有可用来源情报")
 
-            result = await self.hermes_client.execute_report(
-                build_report_prompt(resolved, task.request_summary or "")
-            )
+            async def heartbeat() -> None:
+                task.heartbeat_at = datetime.now(timezone.utc)
+                self.db.commit()
+
+            prompt = build_report_prompt(resolved, task.request_summary or "")
+            if "heartbeat" in inspect.signature(self.hermes_client.execute_report).parameters:
+                result = await self.hermes_client.execute_report(prompt, heartbeat=heartbeat)
+            else:
+                result = await self.hermes_client.execute_report(prompt)
             task.hermes_run_id = result.run_id
             task.raw_output = result.raw_output
             task.stage = "publishing"
@@ -149,6 +157,7 @@ class ReportService:
             )
             task.status = "success"
             task.stage = "completed"
+            task.heartbeat_at = datetime.now(timezone.utc)
             warning_copy = f"，有{len(warnings)}条引用提醒" if warnings else "，引用校验通过"
             task.result_summary = f"生成报告《{briefing.title}》v{version_number}{warning_copy}"
         except (HermesUnavailable, HermesTimeout) as exc:
@@ -160,6 +169,7 @@ class ReportService:
                 task.retry_count += 1
                 task.status = "queued"
                 task.stage = "accepted"
+                task.heartbeat_at = None
                 task.error_message = f"第{task.retry_count}次尝试失败，将自动重试：{str(exc)[:1800]}"
                 task.finished_at = None
                 task.duration_ms = None
@@ -167,6 +177,7 @@ class ReportService:
             else:
                 task.status = "failed"
                 task.stage = "failed"
+                task.heartbeat_at = datetime.now(timezone.utc)
                 task.error_message = str(exc)[:2000]
         except Exception as exc:
             self.db.rollback()
@@ -175,6 +186,7 @@ class ReportService:
                 raise
             task.status = "failed"
             task.stage = "failed"
+            task.heartbeat_at = datetime.now(timezone.utc)
             task.error_message = str(exc)[:2000]
         finally:
             if not retrying:
