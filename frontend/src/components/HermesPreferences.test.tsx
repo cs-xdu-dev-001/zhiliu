@@ -5,14 +5,19 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import { HermesPreferences } from "./HermesPreferences";
 
-const { get, post, remove } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), remove: vi.fn() }));
-vi.mock("../api", () => ({ api: { get, post, delete: remove } }));
+const { get, post, put, remove } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), put: vi.fn(), remove: vi.fn() }));
+vi.mock("../api", () => ({ api: { get, post, put, delete: remove } }));
 
 afterEach(cleanup);
 beforeEach(() => {
-  get.mockReset().mockResolvedValue({ items: [] });
+  get.mockReset().mockImplementation((path: string) => Promise.resolve(
+    path.endsWith("/personalization")
+      ? { autoLearningEnabled: true, algorithmVersion: 1, updatedAt: "2026-08-04T00:00:00Z" }
+      : { items: [] },
+  ));
   post.mockReset().mockResolvedValue({});
-  remove.mockReset().mockResolvedValue({});
+  put.mockReset().mockResolvedValue({ autoLearningEnabled: false, algorithmVersion: 1, updatedAt: "2026-08-04T00:00:00Z" });
+  remove.mockReset().mockResolvedValue({ id: 7 });
 });
 
 function renderPreferences() {
@@ -32,9 +37,28 @@ it("新增长期偏好", async () => {
 });
 
 it("移除已有偏好", async () => {
-  get.mockResolvedValue({ items: [{ id: 7, scope: "topic", effect: "prefer", value: "Agent长期记忆", kind: "all", note: "", active: true, createdAt: "2026-08-04T00:00:00Z", updatedAt: "2026-08-04T00:00:00Z" }] });
+  get.mockImplementation((path: string) => Promise.resolve(
+    path.endsWith("/personalization")
+      ? { autoLearningEnabled: true, algorithmVersion: 1, updatedAt: "2026-08-04T00:00:00Z" }
+      : { items: [{ id: 7, scope: "topic", effect: "prefer", value: "Agent长期记忆", kind: "all", note: "", active: true, createdAt: "2026-08-04T00:00:00Z", updatedAt: "2026-08-04T00:00:00Z" }] },
+  ));
+  remove.mockResolvedValue({ id: 7, scope: "topic", effect: "prefer", value: "Agent长期记忆", kind: "all", note: "", active: false, createdAt: "2026-08-04T00:00:00Z", updatedAt: "2026-08-04T00:00:00Z" });
   renderPreferences();
   expect(await screen.findByText("Agent长期记忆")).toBeVisible();
   await userEvent.click(screen.getByRole("button", { name: "移除偏好Agent长期记忆" }));
   expect(remove).toHaveBeenCalledWith("/api/preferences/7");
+  await userEvent.click(await screen.findByRole("button", { name: "撤销移除" }));
+  expect(post).toHaveBeenCalledWith("/api/preferences/7/restore", {});
+});
+
+it("可以关闭自动学习并重新计算排序", async () => {
+  renderPreferences();
+  const toggle = await screen.findByRole("checkbox", { name: "自动学习" });
+  expect(toggle).toBeChecked();
+
+  await userEvent.click(toggle);
+  expect(put).toHaveBeenCalledWith("/api/preferences/personalization", { autoLearningEnabled: false });
+
+  await userEvent.click(screen.getByRole("button", { name: "重新计算" }));
+  expect(post).toHaveBeenCalledWith("/api/preferences/personalization/recalculate", {});
 });

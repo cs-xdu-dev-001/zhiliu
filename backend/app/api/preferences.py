@@ -3,7 +3,8 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models import HermesPreference
-from app.schemas import PreferencePage, PreferencePayload, PreferenceResponse
+from app.schemas import PersonalizationRecalculateResponse, PersonalizationSettingsResponse, PersonalizationSettingsUpdate, PreferencePage, PreferencePayload, PreferenceResponse
+from app.services.personalization import recalculate, settings
 from app.services.preferences import PreferenceNotFound, PreferenceService
 
 
@@ -43,15 +44,54 @@ def save_preference(
         kind=payload.kind,
         note=payload.note,
     )
+    recalculate(db)
+    db.commit()
     return serialize_preference(record)
 
 
-@router.delete("/{preference_id}", response_model=PreferenceResponse)
-def remove_preference(
-    preference_id: int,
-    db: Session = Depends(get_db),
-) -> PreferenceResponse:
+@router.get("/personalization", response_model=PersonalizationSettingsResponse)
+def get_personalization(db: Session = Depends(get_db)) -> PersonalizationSettingsResponse:
+    record = settings(db)
+    db.commit()
+    db.refresh(record)
+    return PersonalizationSettingsResponse.model_validate(record)
+
+
+@router.put("/personalization", response_model=PersonalizationSettingsResponse)
+def update_personalization(payload: PersonalizationSettingsUpdate, db: Session = Depends(get_db)) -> PersonalizationSettingsResponse:
+    record = settings(db)
+    record.auto_learning_enabled = payload.auto_learning_enabled
+    recalculate(db)
+    db.commit()
+    db.refresh(record)
+    return PersonalizationSettingsResponse.model_validate(record)
+
+
+@router.post("/personalization/recalculate", response_model=PersonalizationRecalculateResponse)
+def recalculate_personalization(db: Session = Depends(get_db)) -> PersonalizationRecalculateResponse:
+    count = recalculate(db)
+    config = settings(db)
+    db.commit()
+    return PersonalizationRecalculateResponse(updated_items=count, algorithm_version=config.algorithm_version)
+
+
+@router.post("/{preference_id}/restore", response_model=PreferenceResponse)
+def restore_preference(preference_id: int, db: Session = Depends(get_db)) -> PreferenceResponse:
     try:
-        return serialize_preference(PreferenceService(db).remove(preference_id))
+        record = PreferenceService(db).restore(preference_id)
+        recalculate(db)
+        db.commit()
+        return serialize_preference(record)
+    except PreferenceNotFound as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@router.delete("/{preference_id}", response_model=PreferenceResponse)
+def remove_preference(preference_id: int, db: Session = Depends(get_db)) -> PreferenceResponse:
+    try:
+        record = PreferenceService(db).remove(preference_id)
+        recalculate(db)
+        db.commit()
+        return serialize_preference(record)
     except PreferenceNotFound as error:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error

@@ -144,6 +144,13 @@ class ItemMergeRequest(ApiModel):
     target_id: int = Field(gt=0)
 
 
+class RecommendationReason(ApiModel):
+    code: str
+    text: str
+    delta: float
+    preference_id: int | None = None
+
+
 class IntelligenceItemResponse(ApiModel):
     id: int
     subscription_id: int
@@ -157,6 +164,8 @@ class IntelligenceItemResponse(ApiModel):
     topics: list["TopicReference"] = Field(default_factory=list)
     reason: str
     importance: float
+    personalized_score: float | None = None
+    recommendation_reasons: list[RecommendationReason] = Field(default_factory=list)
     is_read: bool
     is_saved: bool
     is_ignored: bool
@@ -535,6 +544,21 @@ class SubscriptionHealthPage(ApiModel):
 
 class PreferencePage(ApiModel):
     items: list[PreferenceResponse]
+
+
+class PersonalizationSettingsResponse(ApiModel):
+    auto_learning_enabled: bool
+    algorithm_version: int
+    updated_at: datetime
+
+
+class PersonalizationSettingsUpdate(ApiModel):
+    auto_learning_enabled: bool
+
+
+class PersonalizationRecalculateResponse(ApiModel):
+    updated_items: int
+    algorithm_version: int
 
 
 class BriefingPage(ApiModel):

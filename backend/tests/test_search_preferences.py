@@ -5,9 +5,10 @@ from sqlalchemy.orm import Session
 
 from app.mcp_server.schemas import PublishPayload
 from app.mcp_server.service import PublicationService
-from app.models import Briefing, HermesQualityDecision, IntelligenceItem, ItemRevision
+from app.models import Briefing, HermesQualityDecision, IntelligenceItem, ItemRevision, ItemTopic
 from app.services.item_maintenance import ItemMaintenanceService
 from app.services.preferences import PreferenceService
+from app.services.topics import ensure_topic
 
 
 def test_natural_language_search_finds_items_and_reports(
@@ -247,3 +248,110 @@ def test_subscription_health_summarizes_recent_runs(client, db_session: Session,
     assert item["runCount"] == 2
     assert item["successRate"] == 0.5
     assert item["consecutiveFailures"] == 1
+
+
+def test_personalization_ranking_is_consistent_across_home_feed_and_topic(
+    client,
+    db_session: Session,
+    subscription,
+    seeded_item,
+) -> None:
+    seeded_item.importance = 0.72
+    competitor = IntelligenceItem(
+        subscription_id=subscription.id,
+        kind="news",
+        title="通用模型产业动态",
+        summary="重要但不匹配明确偏好。",
+        url="https://example.com/general-model",
+        source="Other Research",
+        keywords_json='["Agent"]',
+        importance=0.8,
+        fingerprint="b" * 64,
+    )
+    topic = ensure_topic(db_session, "Agent")
+    db_session.add(competitor)
+    db_session.flush()
+    db_session.add_all([
+        ItemTopic(item_id=seeded_item.id, topic_id=topic.id),
+        ItemTopic(item_id=competitor.id, topic_id=topic.id),
+    ])
+    db_session.commit()
+
+    created = client.post(
+        "/api/preferences",
+        json={"scope": "source", "effect": "prefer", "value": "Example Research", "kind": "all"},
+    )
+
+    assert created.status_code == 201
+    feed = client.get("/api/items", params={"state": "unread", "sort": "importance"}).json()
+    home = client.get("/api/dashboard").json()
+    topic_detail = client.get(f"/api/topics/{topic.id}").json()
+    assert feed["items"][0]["id"] == seeded_item.id
+    assert home["topItems"][0]["id"] == seeded_item.id
+    assert topic_detail["latestItems"][0]["id"] == seeded_item.id
+    assert feed["items"][0]["personalizedScore"] == 0.84
+    assert feed["items"][0]["recommendationReasons"][0]["code"] == "source_prefer"
+
+
+def test_auto_learning_can_be_disabled_without_losing_explicit_preferences(
+    client,
+    seeded_item,
+) -> None:
+    client.post(
+        "/api/preferences",
+        json={"scope": "source", "effect": "prefer", "value": "Example Research", "kind": "all"},
+    )
+    updated = client.patch(
+        f"/api/items/{seeded_item.id}",
+        json={"isRead": True, "isSaved": True, "isIgnored": True},
+    ).json()
+
+    reason_codes = {reason["code"] for reason in updated["recommendationReasons"]}
+    assert "ignored" in reason_codes
+    assert "saved" not in reason_codes
+    assert "read" not in reason_codes
+
+    disabled = client.put(
+        "/api/preferences/personalization",
+        json={"autoLearningEnabled": False},
+    )
+    restored = client.get(f"/api/items/{seeded_item.id}").json()
+
+    assert disabled.status_code == 200
+    assert disabled.json()["autoLearningEnabled"] is False
+    assert restored["personalizedScore"] == 1.0
+    assert [reason["code"] for reason in restored["recommendationReasons"]] == ["source_prefer"]
+
+
+def test_removed_preference_can_be_restored_with_previous_ranking_effect(
+    client,
+    seeded_item,
+) -> None:
+    created = client.post(
+        "/api/preferences",
+        json={"scope": "source", "effect": "avoid", "value": "Example Research", "kind": "all"},
+    ).json()
+    reduced = client.get(f"/api/items/{seeded_item.id}").json()["personalizedScore"]
+
+    client.delete(f"/api/preferences/{created['id']}")
+    base = client.get(f"/api/items/{seeded_item.id}").json()["personalizedScore"]
+    restored = client.post(f"/api/preferences/{created['id']}/restore")
+    reduced_again = client.get(f"/api/items/{seeded_item.id}").json()["personalizedScore"]
+
+    assert reduced == 0.72
+    assert base == 0.92
+    assert restored.status_code == 200
+    assert reduced_again == reduced
+
+
+def test_content_specific_preference_does_not_affect_other_kinds(client, seeded_item) -> None:
+    client.post(
+        "/api/preferences",
+        json={"scope": "source", "effect": "avoid", "value": "Example Research", "kind": "paper"},
+    )
+
+    item = client.get(f"/api/items/{seeded_item.id}").json()
+
+    assert item["kind"] == "news"
+    assert item["personalizedScore"] == seeded_item.importance
+    assert all(reason["code"] != "source_avoid" for reason in item["recommendationReasons"])

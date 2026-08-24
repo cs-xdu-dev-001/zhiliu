@@ -41,8 +41,9 @@ export function ItemCard({
   onSelect?: (selected: boolean) => void;
 }) {
   const date = item.publishedAt ?? item.createdAt;
-  const importance = Math.round(item.importance * 100);
-  const priority = importanceLabel(item.importance);
+  const effectiveImportance = item.personalizedScore ?? item.importance;
+  const importance = Math.round(effectiveImportance * 100);
+  const priority = importanceLabel(effectiveImportance);
   const sourceUrl = item.sourceUnavailable ? null : safeExternalUrl(item.url);
   const sourceLabel = item.source.trim() || "来源未标注";
   return (
@@ -62,6 +63,7 @@ export function ItemCard({
         </div>
         <h2>{item.title}</h2>
         <p className="item-summary">{item.summary || item.reason || "暂无摘要"}</p>
+        {effectiveImportance >= .8 && item.recommendationReasons?.[0] && <span className="recommendation-cue">推荐理由：{item.recommendationReasons[0].text}</span>}
         {!selectable && <span className="card-detail-cue">查看详情</span>}
       </Link>
       {!compact && <div className="item-footer">

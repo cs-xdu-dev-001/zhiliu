@@ -64,6 +64,9 @@ class IntelligenceItem(Base):
     keywords_json: Mapped[str] = mapped_column(Text, default="[]")
     reason: Mapped[str] = mapped_column(Text, default="")
     importance: Mapped[float] = mapped_column(Float, default=0)
+    personalized_score: Mapped[float | None] = mapped_column(Float, nullable=True, index=True)
+    recommendation_reasons_json: Mapped[str] = mapped_column(Text, default="[]")
+    personalization_version: Mapped[int] = mapped_column(Integer, default=1)
     fingerprint: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     is_read: Mapped[bool] = mapped_column(Boolean, default=False)
     is_saved: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -375,6 +378,15 @@ class HermesPreference(Base):
     note: Mapped[str] = mapped_column(String(1000), default="")
     active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+
+class PersonalizationSettings(Base):
+    __tablename__ = "personalization_settings"
+
+    id: Mapped[int] = mapped_column(primary_key=True, default=1)
+    auto_learning_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    algorithm_version: Mapped[int] = mapped_column(Integer, default=1)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
 

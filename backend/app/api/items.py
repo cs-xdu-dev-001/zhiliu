@@ -51,6 +51,7 @@ from app.schemas import (
 from app.services.run_service import item_fingerprint
 from app.services.item_maintenance import add_revision, item_snapshot
 from app.services.quality import LOW_IMPORTANCE_THRESHOLD, STALE_DAYS, stale_item_condition
+from app.services.personalization import recalculate
 
 router = APIRouter(prefix="/api", tags=["intelligence"])
 
@@ -81,6 +82,8 @@ def serialize_item(record: IntelligenceItem) -> IntelligenceItemResponse:
         topics=[TopicReference(id=link.topic.id, name=link.topic.name) for link in record.topic_links if link.topic.merged_into_id is None],
         reason=record.reason,
         importance=record.importance,
+        personalized_score=record.personalized_score,
+        recommendation_reasons=json.loads(record.recommendation_reasons_json or "[]"),
         is_read=record.is_read,
         is_saved=record.is_saved,
         is_ignored=record.is_ignored,
@@ -170,7 +173,7 @@ def list_items(
 
     total = db.scalar(select(func.count()).select_from(IntelligenceItem).where(*filters)) or 0
     order_by = {
-        "importance": (IntelligenceItem.importance.desc(), IntelligenceItem.created_at.desc(), IntelligenceItem.id.desc()),
+        "importance": (func.coalesce(IntelligenceItem.personalized_score, IntelligenceItem.importance).desc(), IntelligenceItem.created_at.desc(), IntelligenceItem.id.desc()),
         "newest": (event_time.desc(), IntelligenceItem.id.desc()),
         "oldest": (event_time.asc(), IntelligenceItem.id.asc()),
         "title": (func.lower(IntelligenceItem.title).asc(), IntelligenceItem.id.asc()),
@@ -305,6 +308,7 @@ def bulk_update_items(payload: ItemBulkUpdate, db: Session = Depends(get_db)) ->
         skipped=skipped,
     )
     operation.result_json = response.model_dump_json(by_alias=False)
+    recalculate(db, updated_ids)
     try:
         db.commit()
     except IntegrityError:
@@ -341,6 +345,7 @@ def replace_item_tags(
         record.tags[:] = [tag_record for tag_record in record.tags if tag_record.name in desired]
         record.tags.extend(ItemTag(name=name) for name in payload.tags if name not in current)
         add_revision(db, record, "tags_replaced", before, item_snapshot(record))
+        recalculate(db, [record.id])
         db.commit()
         db.refresh(record)
     return serialize_item(record)
@@ -428,6 +433,7 @@ def update_item_state(
     after = item_snapshot(record)
     if before != after:
         add_revision(db, record, "state_updated", before, after)
+    recalculate(db, [record.id])
     db.commit()
     db.refresh(record)
     return serialize_item(record)
@@ -466,6 +472,7 @@ def update_item_content(
     after = item_snapshot(record)
     if before != after:
         add_revision(db, record, "edited", before, after)
+    recalculate(db, [record.id])
     db.commit()
     db.refresh(record)
     return serialize_item(record)
@@ -487,6 +494,7 @@ def update_item_validity(
     after = item_snapshot(record)
     if before != after:
         add_revision(db, record, "invalidated" if payload.invalid else "restored", before, after)
+    recalculate(db, [record.id])
     db.commit()
     db.refresh(record)
     return serialize_item(record)
@@ -517,6 +525,7 @@ def update_item_source_availability(
             idempotency_key=f"source-status:{record.id}:{change_type}:{revision_count}",
             before=before, after=after,
         )
+    recalculate(db, [record.id])
     db.commit()
     db.refresh(record)
     return serialize_item(record)
@@ -553,6 +562,7 @@ def update_item_change(
     db.flush()
     latest = db.scalar(select(ItemChange).where(ItemChange.item_id == item_id, ItemChange.status != "unlinked").order_by(ItemChange.detected_at.desc(), ItemChange.id.desc()).limit(1))
     item.latest_change_type = latest.change_type if latest else None
+    recalculate(db, [item.id])
     db.commit()
     db.refresh(change)
     return serialize_change(change)
@@ -701,7 +711,7 @@ def dashboard(db: Session = Depends(get_db)) -> DashboardResponse:
             IntelligenceItem.is_invalid.is_(False),
             IntelligenceItem.merged_into_id.is_(None),
         )
-        .order_by(IntelligenceItem.importance.desc())
+        .order_by(func.coalesce(IntelligenceItem.personalized_score, IntelligenceItem.importance).desc())
         .limit(3)
     ).all()
     latest = db.scalar(select(Briefing).order_by(Briefing.created_at.desc()).limit(1))

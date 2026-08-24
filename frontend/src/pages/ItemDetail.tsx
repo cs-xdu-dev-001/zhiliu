@@ -232,7 +232,7 @@ export function ItemDetail() {
           {item.sourceUnavailable && <span className="source-failed-tag">原文失效</span>}
           <span>{sourceLabel}</span>
           <time dateTime={date}>{new Date(date).toLocaleString("zh-CN")}</time>
-          <span>{Math.round(item.importance * 100)}分</span>
+          <span>{Math.round((item.personalizedScore ?? item.importance) * 100)}分</span>
         </div>
         <h2>{item.title}</h2>
         <p className="detail-summary">{item.summary || "暂无摘要"}</p>
@@ -240,6 +240,7 @@ export function ItemDetail() {
           <h3 id="reason-heading">值得关注</h3>
           <p>{item.reason || "暂无补充判断"}</p>
         </section>
+        {item.recommendationReasons?.length ? <section className="recommendation-explanation" aria-labelledby="recommendation-heading"><h3 id="recommendation-heading">为什么推荐给我</h3><p>原始{Math.round(item.importance * 100)}分，个性化后{Math.round((item.personalizedScore ?? item.importance) * 100)}分</p><ul>{item.recommendationReasons.map((reason) => <li key={`${reason.code}-${reason.text}`}><span>{reason.text}</span><strong>{reason.delta > 0 ? "+" : ""}{Math.round(reason.delta * 100)}</strong></li>)}</ul></section> : null}
         <div className="keyword-row">{item.topics?.map((topic) => <Link key={topic.id} href={`/topics/${topic.id}`}>{topic.name}</Link>)}{item.tags.map((tag) => <span className="item-tag" key={tag}>{tag}</span>)}</div>
       </div>
 

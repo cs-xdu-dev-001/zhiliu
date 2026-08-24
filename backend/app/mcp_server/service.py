@@ -28,6 +28,7 @@ from app.models import (
 from app.services.change_detection import ChangeInput, apply_snapshot, content_snapshot, incoming_snapshot, meaningful_change, record_automatic_revision, record_change
 from app.services.run_service import canonical_item, item_fingerprint, normalize_url
 from app.services.preferences import PreferenceService
+from app.services.personalization import recalculate
 from app.services.quality import record_quality_decisions
 from app.services.topics import link_item_topics
 
@@ -296,6 +297,7 @@ class PublicationService:
                 {item.source for item in payload.items if preference_service.filters_source(item.source, payload.kind)},
                 payload.kind,
             )
+            recalculate(self.db, [item.id for item, _ in resolved_items])
             receipt = self._receipt(publication, duplicate=False)
             self.db.commit()
             return receipt
@@ -411,7 +413,7 @@ class PublicationService:
                 existing = canonical_item(self.db, existing)
                 before = content_snapshot(existing)
                 source = item.source if item.source.endswith(" · 微信Hermes") else f"{item.source} · 微信Hermes"
-                adjusted_importance = preference_service.adjust_importance(item.source, payload.kind, item.importance)
+                adjusted_importance = item.importance
                 after = incoming_snapshot(item, kind=payload.kind, url=normalized_url, source=source, importance=adjusted_importance)
                 explicit = item.change
                 detected = explicit.change_type if explicit else ("important_update" if meaningful_change(before, after) else "duplicate_message")
@@ -446,9 +448,7 @@ class PublicationService:
                 published_at=item.published_at,
                 keywords_json=json.dumps(item.keywords, ensure_ascii=False),
                 reason=item.reason,
-                importance=preference_service.adjust_importance(
-                    item.source, payload.kind, item.importance
-                ),
+                importance=item.importance,
                 fingerprint=fingerprint,
             )
             self.db.add(record)

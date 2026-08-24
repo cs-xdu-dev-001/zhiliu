@@ -10,6 +10,7 @@ from app.api.runs import serialize_task_run
 from app.db import get_db
 from app.models import Briefing, HermesPublication, IntelligenceItem, ItemChange, ItemTopic, PublicationItem, TaskRun, Topic, TopicAlias
 from app.schemas import BriefingResponse, ItemChangeResponse, TopicDetail, TopicMergeRequest, TopicPage, TopicStateUpdate, TopicSummary
+from app.services.personalization import recalculate
 
 router = APIRouter(prefix="/api/topics", tags=["topics"])
 
@@ -97,7 +98,7 @@ def get_topic(topic_id: int, db: Session = Depends(get_db)) -> TopicDetail:
     if topic is None or topic.merged_into_id is not None:
         raise HTTPException(status_code=404, detail="主题不存在")
     item_ids = select(ItemTopic.item_id).where(ItemTopic.topic_id == topic.id)
-    items = db.scalars(select(IntelligenceItem).where(IntelligenceItem.id.in_(item_ids), IntelligenceItem.is_invalid.is_(False), IntelligenceItem.merged_into_id.is_(None)).order_by(IntelligenceItem.importance.desc(), IntelligenceItem.created_at.desc()).limit(20)).all()
+    items = db.scalars(select(IntelligenceItem).where(IntelligenceItem.id.in_(item_ids), IntelligenceItem.is_invalid.is_(False), IntelligenceItem.merged_into_id.is_(None)).order_by(func.coalesce(IntelligenceItem.personalized_score, IntelligenceItem.importance).desc(), IntelligenceItem.created_at.desc()).limit(20)).all()
     publication_ids = select(PublicationItem.publication_id).where(PublicationItem.item_id.in_(item_ids))
     briefings = db.scalars(select(Briefing).join(HermesPublication, HermesPublication.briefing_id == Briefing.id).where(HermesPublication.id.in_(publication_ids)).distinct().order_by(Briefing.created_at.desc()).limit(8)).all()
     runs = db.scalars(select(TaskRun).where(or_(TaskRun.topic.ilike(f"%{topic.name}%"), TaskRun.id.in_(select(HermesPublication.task_run_id).where(HermesPublication.id.in_(publication_ids))))).order_by(TaskRun.started_at.desc()).limit(8)).all()
@@ -129,7 +130,9 @@ def update_topic(topic_id: int, payload: TopicStateUpdate, db: Session = Depends
         value = getattr(payload, field)
         if value is not None:
             setattr(topic, field, value)
-    db.commit(); db.refresh(topic)
+    recalculate(db, list(db.scalars(select(ItemTopic.item_id).where(ItemTopic.topic_id == topic.id)).all()))
+    db.commit()
+    db.refresh(topic)
     return _summary(db, topic)
 
 

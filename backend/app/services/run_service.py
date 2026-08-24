@@ -13,6 +13,7 @@ from app.services.change_detection import ChangeInput, apply_snapshot, content_s
 from app.services.hermes import HermesClient, HermesTimeout, HermesUnavailable
 from app.services.quality import record_quality_decisions
 from app.services.topics import link_item_topics
+from app.services.personalization import recalculate
 
 
 def normalize_url(value: str) -> str:
@@ -169,6 +170,7 @@ class RunService:
                 for ordinal, (item, was_inserted) in enumerate(resolved_items)
             )
             record_quality_decisions(self.db, publication, result.items, resolved_items)
+            recalculate(self.db, [item.id for item, _ in resolved_items])
             task.subscription.last_run_at = datetime.now(timezone.utc)
             task.status = "success"
             task.stage = "completed"

@@ -1,9 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, SlidersHorizontal, Trash2, X } from "lucide-react";
+import { Plus, RefreshCw, SlidersHorizontal, Trash2, X } from "lucide-react";
 import { FormEvent, useState } from "react";
 
 import { api } from "../api";
-import type { HermesPreference, PreferenceEffect, PreferenceKind, PreferencePage, PreferenceScope } from "../types";
+import type { HermesPreference, PersonalizationRecalculate, PersonalizationSettings, PreferenceEffect, PreferenceKind, PreferencePage, PreferenceScope } from "../types";
 
 const scopeNames: Record<PreferenceScope, string> = { source: "来源", topic: "主题", output: "输出方式" };
 const effectNames: Record<PreferenceEffect, string> = { prefer: "优先", avoid: "避开", instruct: "遵循" };
@@ -16,22 +16,27 @@ export function HermesPreferences() {
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [notice, setNotice] = useState("");
+  const [removedPreference, setRemovedPreference] = useState<HermesPreference | null>(null);
   const query = useQuery({ queryKey: ["preferences"], queryFn: () => api.get<PreferencePage>("/api/preferences") });
+  const personalization = useQuery({ queryKey: ["personalization"], queryFn: () => api.get<PersonalizationSettings>("/api/preferences/personalization") });
   const save = useMutation({
     mutationFn: () => api.post<HermesPreference>("/api/preferences", form),
     onSuccess: () => { setAdding(false); setForm(emptyForm); setNotice("偏好已保存，Hermes后续整理会遵循它"); queryClient.invalidateQueries({ queryKey: ["preferences"] }); },
   });
   const remove = useMutation({
     mutationFn: (id: number) => api.delete<HermesPreference>(`/api/preferences/${id}`),
-    onSuccess: () => { setNotice("偏好已移除"); queryClient.invalidateQueries({ queryKey: ["preferences"] }); },
+    onSuccess: (item) => { setRemovedPreference(item); setNotice("偏好已移除，排序已恢复"); queryClient.invalidateQueries({ queryKey: ["preferences"] }); queryClient.invalidateQueries({ queryKey: ["items"] }); },
   });
+  const restore = useMutation({ mutationFn: (id: number) => api.post<HermesPreference>(`/api/preferences/${id}/restore`, {}), onSuccess: () => { setRemovedPreference(null); setNotice("偏好已恢复，排序已重新计算"); queryClient.invalidateQueries({ queryKey: ["preferences"] }); queryClient.invalidateQueries({ queryKey: ["items"] }); } });
+  const toggleLearning = useMutation({ mutationFn: (enabled: boolean) => api.put<PersonalizationSettings>("/api/preferences/personalization", { autoLearningEnabled: enabled }), onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["personalization"] }); queryClient.invalidateQueries({ queryKey: ["items"] }); setNotice("个性化排序已重新计算"); } });
+  const recalculate = useMutation({ mutationFn: () => api.post<PersonalizationRecalculate>("/api/preferences/personalization/recalculate", {}), onSuccess: (result) => { setNotice(`已重新计算${result.updatedItems}条情报`); queryClient.invalidateQueries({ queryKey: ["items"] }); } });
   const preferences = query.data?.items ?? [];
 
   function submit(event: FormEvent) { event.preventDefault(); save.mutate(); }
 
   return <section className="preference-section" aria-labelledby="preference-title">
-    <div className="preference-heading"><div><h2 id="preference-title">Hermes偏好</h2><p>长期偏好会影响Hermes检索、筛选和整理知流内容。</p></div><button className="secondary-button" onClick={() => { setAdding(!adding); setNotice(""); }}>{adding ? <X size={17} /> : <Plus size={17} />}{adding ? "取消" : "新增偏好"}</button></div>
-    {notice && <p className="action-notice success" role="status">{notice}</p>}
+    <div className="preference-heading"><div><h2 id="preference-title">Hermes偏好</h2><p>长期偏好会影响Hermes检索、筛选和整理知流内容。</p></div><div className="personalization-actions"><label><input type="checkbox" checked={personalization.data?.autoLearningEnabled ?? true} disabled={toggleLearning.isPending} onChange={(event) => toggleLearning.mutate(event.target.checked)} />自动学习</label><button className="secondary-button" disabled={recalculate.isPending} onClick={() => recalculate.mutate()}><RefreshCw size={16} />重新计算</button><button className="secondary-button" onClick={() => { setAdding(!adding); setNotice(""); }}>{adding ? <X size={17} /> : <Plus size={17} />}{adding ? "取消" : "新增偏好"}</button></div></div>
+    {notice && <div className="action-notice success" role="status"><span>{notice}</span>{removedPreference && <button onClick={() => restore.mutate(removedPreference.id)}>撤销移除</button>}</div>}
     {adding && <form className="preference-form" onSubmit={submit}>
       <label className="form-field"><span>作用对象</span><select aria-label="作用对象" value={form.scope} onChange={(event) => setForm({ ...form, scope: event.target.value as PreferenceScope })}><option value="topic">主题</option><option value="source">来源</option><option value="output">输出方式</option></select></label>
       <label className="form-field"><span>处理方式</span><select aria-label="处理方式" value={form.effect} onChange={(event) => setForm({ ...form, effect: event.target.value as PreferenceEffect })}><option value="prefer">优先</option><option value="avoid">避开</option><option value="instruct">遵循</option></select></label>

@@ -109,6 +109,16 @@ class PreferenceService:
         self.db.refresh(record)
         return record
 
+    def restore(self, preference_id: int) -> HermesPreference:
+        record = self.db.get(HermesPreference, preference_id)
+        if record is None:
+            raise PreferenceNotFound("Hermes偏好不存在")
+        self._deactivate_opposite(scope=record.scope, effect=record.effect, value=record.value, kind=record.kind)
+        record.active = True
+        self.db.commit()
+        self.db.refresh(record)
+        return record
+
     def filters_source(self, source: str, kind: str) -> bool:
         folded = source.casefold()
         return any(

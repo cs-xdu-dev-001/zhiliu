@@ -23,6 +23,8 @@ export interface IntelligenceItem {
   topics?: TopicReference[];
   reason: string;
   importance: number;
+  personalizedScore?: number | null;
+  recommendationReasons?: RecommendationReason[];
   isRead: boolean;
   isSaved: boolean;
   isIgnored: boolean;
@@ -42,6 +44,8 @@ export interface ItemRevision {
   after: Record<string, unknown> | null;
   createdAt: string;
 }
+
+export interface RecommendationReason { code: string; text: string; delta: number; preferenceId?: number | null; }
 
 export type ChangeType = "first_appearance" | "ongoing" | "important_update" | "duplicate_message" | "viewpoint_changed" | "information_invalid";
 
@@ -450,4 +454,7 @@ export interface HermesPreference {
 export interface PreferencePage {
   items: HermesPreference[];
 }
+
+export interface PersonalizationSettings { autoLearningEnabled: boolean; algorithmVersion: number; updatedAt: string; }
+export interface PersonalizationRecalculate { updatedItems: number; algorithmVersion: number; }
 
