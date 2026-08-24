@@ -187,3 +187,13 @@ def test_sweep_handles_legacy_running_task_without_heartbeat(db_session, subscri
     db_session.refresh(task)
     assert task.stage == "lost"
 
+
+def test_scheduler_snapshot_exposes_only_runtime_state(monkeypatch) -> None:
+    monkeypatch.setattr(scheduler, "_scheduler", None)
+    snapshot = scheduler.scheduler_snapshot(enabled=True)
+
+    assert snapshot["enabled"] is True
+    assert snapshot["running"] is False
+    assert snapshot["job_count"] == 0
+    assert "error_message" not in snapshot
+

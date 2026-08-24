@@ -12,5 +12,5 @@ COPY backend/migrations ./migrations
 RUN mkdir -p /data
 
 EXPOSE 8010
-CMD ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8010 --proxy-headers"]
+CMD ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8010 --proxy-headers --no-access-log"]
 

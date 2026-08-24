@@ -8,6 +8,7 @@ import { EmptyState } from "../components/EmptyState";
 import { HermesConnection } from "../components/HermesConnection";
 import { HermesPreferences } from "../components/HermesPreferences";
 import { SubscriptionHealth } from "../components/SubscriptionHealth";
+import { SystemDiagnostics } from "../components/SystemDiagnostics";
 import type { IntelligenceKind, Subscription, SubscriptionInput } from "../types";
 import { useModalDialog } from "../useModalDialog";
 
@@ -199,6 +200,7 @@ export function Subscriptions() {
       </>}
       {view === "runtime" && <section className="settings-support" aria-label="Hermes与运行设置">
         <HermesConnection />
+        <SystemDiagnostics />
         <HermesPreferences />
         <SubscriptionHealth />
       </section>}

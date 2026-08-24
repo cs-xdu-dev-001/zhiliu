@@ -459,6 +459,8 @@ test("查看质量记录和订阅健康", async ({ page }, testInfo) => {
   }
   await capture(page, testInfo, "quality-center");
   await page.goto("/settings?view=runtime");
+  await expect(page.getByRole("heading", { name: "系统诊断" })).toBeVisible();
+  await expect(page.getByText("数据库可用")).toBeVisible();
   await expect(page.getByRole("heading", { name: "订阅健康" })).toBeVisible();
   await expect(page.getByText(/条产出/).first()).toBeVisible();
   await capture(page, testInfo, "subscription-health");

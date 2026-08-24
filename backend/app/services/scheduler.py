@@ -15,6 +15,24 @@ from app.services.run_service import RunService
 from app.services.report_service import ReportService
 
 _scheduler: AsyncIOScheduler | None = None
+_last_queue_poll_at: datetime | None = None
+_last_queue_poll_failed = False
+_last_sweep_at: datetime | None = None
+_last_sweep_lost_count = 0
+
+
+def scheduler_snapshot(*, enabled: bool) -> dict[str, object]:
+    """Return a non-sensitive runtime summary for operational diagnostics."""
+    running = bool(_scheduler is not None and _scheduler.running)
+    return {
+        "enabled": enabled,
+        "running": running,
+        "job_count": len(_scheduler.get_jobs()) if running and _scheduler is not None else 0,
+        "last_queue_poll_at": _last_queue_poll_at,
+        "last_queue_poll_failed": _last_queue_poll_failed,
+        "last_sweep_at": _last_sweep_at,
+        "last_sweep_lost_count": _last_sweep_lost_count,
+    }
 
 
 def queue_subscription(db: Session, subscription_id: int) -> TaskRun:
@@ -89,55 +107,64 @@ class DemoHermesClient:
 
 
 async def process_queued_tasks() -> None:
-    sweep_lost_tasks()
-    with SessionLocal() as lookup_db:
-        task_ids = list(
-            lookup_db.scalars(
-                select(TaskRun.id).where(TaskRun.status == "queued").order_by(TaskRun.started_at).limit(3)
-            ).all()
-        )
-
-    settings = get_settings()
-    for task_id in task_ids:
-        with SessionLocal() as db:
-            task = db.get(TaskRun, task_id)
-            if task is None or task.status != "queued":
-                continue
-            claimed = db.execute(
-                update(TaskRun)
-                .where(TaskRun.id == task_id, TaskRun.status == "queued")
-                .values(status="running", stage="accepted", heartbeat_at=datetime.now(timezone.utc))
+    global _last_queue_poll_at, _last_queue_poll_failed
+    _last_queue_poll_at = datetime.now(timezone.utc)
+    try:
+        sweep_lost_tasks()
+        with SessionLocal() as lookup_db:
+            task_ids = list(
+                lookup_db.scalars(
+                    select(TaskRun.id).where(TaskRun.status == "queued").order_by(TaskRun.started_at).limit(3)
+                ).all()
             )
-            try:
-                db.commit()
-            except Exception:
-                db.rollback()
-                raise
-            if claimed.rowcount != 1:
-                continue
-            db.refresh(task)
-            try:
-                client = HermesIntegrationService(db, settings).resolve_client(task.subscription, DemoHermesClient)
-            except (HermesUnavailable, SecretDecryptionError) as exc:
-                task.status = "failed"
-                task.stage = "failed"
-                task.heartbeat_at = datetime.now(timezone.utc)
-                task.error_message = str(exc)[:2000]
-                task.finished_at = datetime.now(timezone.utc)
-                task.duration_ms = 0
+
+        settings = get_settings()
+        for task_id in task_ids:
+            with SessionLocal() as db:
+                task = db.get(TaskRun, task_id)
+                if task is None or task.status != "queued":
+                    continue
+                claimed = db.execute(
+                    update(TaskRun)
+                    .where(TaskRun.id == task_id, TaskRun.status == "queued")
+                    .values(status="running", stage="accepted", heartbeat_at=datetime.now(timezone.utc))
+                )
                 try:
                     db.commit()
                 except Exception:
                     db.rollback()
                     raise
-                continue
-            if task.origin == "web-report":
-                await ReportService(db, client).execute_task(task.id)
-            else:
-                await RunService(db, client).execute_task(task.id)
+                if claimed.rowcount != 1:
+                    continue
+                db.refresh(task)
+                try:
+                    client = HermesIntegrationService(db, settings).resolve_client(task.subscription, DemoHermesClient)
+                except (HermesUnavailable, SecretDecryptionError) as exc:
+                    task.status = "failed"
+                    task.stage = "failed"
+                    task.heartbeat_at = datetime.now(timezone.utc)
+                    task.error_message = str(exc)[:2000]
+                    task.finished_at = datetime.now(timezone.utc)
+                    task.duration_ms = 0
+                    try:
+                        db.commit()
+                    except Exception:
+                        db.rollback()
+                        raise
+                    continue
+                if task.origin == "web-report":
+                    await ReportService(db, client).execute_task(task.id)
+                else:
+                    await RunService(db, client).execute_task(task.id)
+    except Exception:
+        _last_queue_poll_failed = True
+        raise
+    else:
+        _last_queue_poll_failed = False
 
 
 def sweep_lost_tasks() -> int:
+    global _last_sweep_at, _last_sweep_lost_count
     settings = get_settings()
     stale_after = max(settings.hermes_timeout_seconds * 2, 600)
     cutoff = datetime.now(timezone.utc) - timedelta(seconds=stale_after)
@@ -160,7 +187,9 @@ def sweep_lost_tasks() -> int:
             task.duration_ms = max(0, int((now - task.started_at).total_seconds() * 1000))
         if records:
             db.commit()
-        return len(records)
+        _last_sweep_at = now
+        _last_sweep_lost_count = len(records)
+        return _last_sweep_lost_count
 
 
 def refresh_subscription_jobs() -> None:

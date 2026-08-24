@@ -302,6 +302,43 @@ export interface SubscriptionHealthPage {
   generatedAt: string;
 }
 
+export interface SystemDiagnostics {
+  status: "ok" | "degraded" | "unavailable";
+  generatedAt: string;
+  database: {
+    status: "ok" | "unavailable";
+    latencyMs: number | null;
+    migrationVersion: string | null;
+  };
+  scheduler: {
+    enabled: boolean;
+    running: boolean;
+    jobCount: number;
+    lastQueuePollAt: string | null;
+    lastQueuePollFailed: boolean;
+    lastSweepAt: string | null;
+    lastSweepLostCount: number;
+  };
+  queue: {
+    queued: number;
+    running: number;
+    oldestActiveSeconds: number | null;
+    lastSuccessAt: string | null;
+    lastFailureAt: string | null;
+  };
+  hermes: {
+    configured: boolean;
+    status: string;
+    checkedAt: string | null;
+  };
+  mcp: {
+    status: "verified" | "unverified" | "failed" | "unknown";
+    lastWriteAt: string | null;
+    lastTaskStatus: string | null;
+    lastTaskAt: string | null;
+  };
+}
+
 export interface Dashboard {
   unreadCount: number;
   savedCount: number;

@@ -121,6 +121,8 @@ Hermes还可用`zhiliu_search`回答“知流里最近有哪些Agent框架更新
 
 ## VPS部署
 
+完整的发布、回滚、诊断和恢复流程见[`docs/operations.md`](docs/operations.md)。下面只保留首次启动所需步骤。
+
 ```bash
 sudo mkdir -p /opt/zhiliu
 sudo chown "$USER":"$USER" /opt/zhiliu
@@ -170,14 +172,13 @@ location / {
 
 ## 数据备份
 
-SQLite数据保存在Docker卷`zhiliu-data`。备份前请创建一致性快照：
+SQLite数据保存在Docker卷`zhiliu-data`。使用正式脚本创建一致性快照、执行完整性检查并生成SHA-256校验文件：
 
 ```bash
-docker compose exec backend python -c "import sqlite3; src=sqlite3.connect('/data/zhiliu.db'); dst=sqlite3.connect('/data/zhiliu-backup.db'); src.backup(dst); dst.close(); src.close()"
-docker cp "$(docker compose ps -q backend):/data/zhiliu-backup.db" ./zhiliu-backup.db
+./deploy/scripts/sqlite-backup.sh /opt/backups/zhiliu
 ```
 
-将`zhiliu-backup.db`纳入服务器现有的restic/rclone备份任务。
+将`.db`及同名`.sha256`一起纳入服务器现有的restic/rclone备份任务。恢复必须使用`deploy/scripts/sqlite-restore.sh`的显式确认流程，详见运维手册。
 
 数据库结构由Alembic管理，后端容器每次启动会先执行`alembic upgrade head`。升级前必须完成上述一致性备份；若要回滚到旧版应用，必须同时恢复升级前数据库备份，禁止只回滚容器并继续使用已升级的SQLite，也不要执行`docker compose down -v`。
 
@@ -190,5 +191,5 @@ uv run pytest -v
 cd ../frontend
 npm test -- --run
 npm run build
-npm audit --omit=dev
+npm audit --audit-level=high
 ```

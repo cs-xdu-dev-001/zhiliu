@@ -17,10 +17,12 @@ from app.api.preferences import router as preferences_router
 from app.api.quality import router as quality_router
 from app.api.subscription_health import router as subscription_health_router
 from app.api.saved_views import router as saved_views_router
+from app.api.diagnostics import router as diagnostics_router
 from app.db import SessionLocal, get_db
 from app.core.config import get_settings
 from app.core.config import Settings
 from app.mcp_server.server import SessionFactory, build_mcp_asgi
+from app.middleware import SafeRequestLogMiddleware
 from app.seed import seed_database
 from app.services.scheduler import start_scheduler, stop_scheduler
 
@@ -58,6 +60,8 @@ def create_app(
                 stop_scheduler()
 
     application = FastAPI(title="知流", version="0.1.0", lifespan=lifespan)
+    application.add_middleware(SafeRequestLogMiddleware)
+    application.dependency_overrides[get_settings] = lambda: runtime_settings
     application.include_router(subscriptions_router)
     application.include_router(items_router)
     application.include_router(briefings_router)
@@ -69,6 +73,7 @@ def create_app(
     application.include_router(quality_router)
     application.include_router(subscription_health_router)
     application.include_router(saved_views_router)
+    application.include_router(diagnostics_router)
 
     @application.get("/api/health")
     def health(db: Session = Depends(get_db)) -> dict[str, str]:

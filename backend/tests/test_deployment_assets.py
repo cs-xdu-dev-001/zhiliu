@@ -57,3 +57,30 @@ def test_readme_warns_to_merge_config_and_separate_tokens() -> None:
     assert "必须不同" in readme
     assert "location = /api/mcp { return 404; }" in readme
     assert "请检索今天最重要的三条Agent动态，整理好以后放进知流。" in readme
+
+
+def test_operations_assets_preserve_data_and_hide_public_mcp() -> None:
+    operations = read("docs/operations.md")
+    backup = read("deploy/scripts/sqlite-backup.sh")
+    restore = read("deploy/scripts/sqlite-restore.sh")
+    acceptance = read("deploy/scripts/acceptance.sh")
+    host_nginx = read("deploy/nginx-host.conf.example")
+
+    assert "docker compose down -v" in operations
+    assert "RESTORE_ZHILIU_SQLITE" in operations
+    assert "/api/diagnostics" in operations
+    assert "X-Request-ID" in operations
+    assert "MCP最近写入" in operations
+    assert "app.ops.sqlite_snapshot backup" in backup
+    assert "sha256sum" in backup
+    assert "app.ops.sqlite_snapshot verify" in backup
+    assert "RESTORE_ZHILIU_SQLITE" in restore
+    assert "pre-restore" in restore
+    assert "docker compose stop backend" in restore
+    assert "down -v" not in backup
+    assert "down -v" not in restore
+    assert "/api/diagnostics" in acceptance
+    assert 'MCP_STATUS" != "401"' in acceptance
+    assert 'PUBLIC_MCP_STATUS" != "404"' in acceptance
+    assert host_nginx.index("location = /api/mcp") < host_nginx.index("location /")
+    assert "--no-access-log" in read("backend/Dockerfile")

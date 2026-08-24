@@ -12,7 +12,11 @@ afterEach(cleanup);
 
 beforeEach(() => {
   window.history.pushState({}, "", "/settings");
-  get.mockReset().mockImplementation((url: string) => url.includes("/api/integrations/hermes") ? Promise.resolve({ baseUrl: "", apiKeyConfigured: false, apiKeyHint: null, status: "unconfigured", message: "请配置", checkedAt: null, version: null }) : Promise.resolve([]));
+  get.mockReset().mockImplementation((url: string) => {
+    if (url.includes("/api/integrations/hermes")) return Promise.resolve({ baseUrl: "", apiKeyConfigured: false, apiKeyHint: null, status: "unconfigured", message: "请配置", checkedAt: null, version: null });
+    if (url.includes("/api/diagnostics")) return Promise.resolve({ status: "ok", generatedAt: "2026-08-24T00:00:00Z", database: { status: "ok", latencyMs: 2, migrationVersion: "head" }, scheduler: { enabled: true, running: true, jobCount: 2, lastQueuePollAt: null, lastQueuePollFailed: false, lastSweepAt: null, lastSweepLostCount: 0 }, queue: { queued: 0, running: 0, oldestActiveSeconds: null, lastSuccessAt: null, lastFailureAt: null }, hermes: { configured: false, status: "unconfigured", checkedAt: null }, mcp: { status: "unverified", lastWriteAt: null, lastTaskStatus: null, lastTaskAt: null } });
+    return Promise.resolve([]);
+  });
   post.mockReset().mockResolvedValue({});
   put.mockReset().mockResolvedValue({});
   remove.mockReset().mockResolvedValue(undefined);
@@ -206,11 +210,13 @@ it("订阅列表分页限制首屏渲染量", async () => {
 });
 
 it("用独立视图切换订阅管理和Hermes运行设置", async () => {
-  get.mockImplementation((url: string) => url.includes("/api/integrations/hermes")
-    ? Promise.resolve({ baseUrl: "", apiKeyConfigured: false, apiKeyHint: null, status: "unconfigured", message: "请配置", checkedAt: null, version: null })
-    : Promise.resolve([{
+  get.mockImplementation((url: string) => {
+    if (url.includes("/api/integrations/hermes")) return Promise.resolve({ baseUrl: "", apiKeyConfigured: false, apiKeyHint: null, status: "unconfigured", message: "请配置", checkedAt: null, version: null });
+    if (url.includes("/api/diagnostics")) return Promise.resolve({ status: "ok", generatedAt: "2026-08-24T00:00:00Z", database: { status: "ok", latencyMs: 2, migrationVersion: "head" }, scheduler: { enabled: true, running: true, jobCount: 2, lastQueuePollAt: null, lastQueuePollFailed: false, lastSweepAt: null, lastSweepLostCount: 0 }, queue: { queued: 0, running: 0, oldestActiveSeconds: null, lastSuccessAt: null, lastFailureAt: null }, hermes: { configured: false, status: "unconfigured", checkedAt: null }, mcp: { status: "unverified", lastWriteAt: null, lastTaskStatus: null, lastTaskAt: null } });
+    return Promise.resolve([{
         id: 7, name: "Agent论文周报", kind: "paper", keywords: ["Agent"], schedule: "0 8 * * 1", prompt: "检索论文", enabled: true, lastRunAt: null, nextRunAt: null, createdAt: "2026-08-01T00:00:00Z", updatedAt: "2026-08-01T00:00:00Z",
-      }]));
+      }]);
+  });
 
   render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
