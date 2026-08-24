@@ -7,6 +7,7 @@ from pydantic.alias_generators import to_camel
 
 
 IntelligenceKind = Literal["news", "paper", "job"]
+ChangeType = Literal["first_appearance", "ongoing", "important_update", "duplicate_message", "viewpoint_changed", "information_invalid"]
 
 
 class McpModel(BaseModel):
@@ -18,6 +19,19 @@ class McpModel(BaseModel):
     )
 
 
+class PublishChange(McpModel):
+    change_type: ChangeType
+    related_item_id: int | None = Field(default=None, gt=0)
+    change_basis: str = Field(min_length=1, max_length=2000)
+    source_urls: list[HttpUrl] = Field(min_length=1, max_length=10)
+
+    @model_validator(mode="after")
+    def require_related_item(self) -> "PublishChange":
+        if self.change_type != "first_appearance" and self.related_item_id is None:
+            raise ValueError("非首次出现的变化必须提供relatedItemId")
+        return self
+
+
 class PublishItem(McpModel):
     title: str = Field(min_length=1, max_length=300)
     summary: str = Field(min_length=1, max_length=5000)
@@ -27,6 +41,7 @@ class PublishItem(McpModel):
     keywords: list[str] = Field(default_factory=list, max_length=20)
     reason: str = Field(default="", max_length=2000)
     importance: float = Field(ge=0, le=1)
+    change: PublishChange | None = None
 
     @field_validator("url")
     @classmethod

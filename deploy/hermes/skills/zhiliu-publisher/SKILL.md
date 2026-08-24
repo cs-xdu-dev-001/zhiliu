@@ -17,6 +17,8 @@ description: 通过微信自然语言搜索、整理和维护知流内容，或�
 - 无法判断用户要一次性整理还是长期监测时，先询问用户。
 - 普通聊天、仅解释“知流是什么”或没有写入意图时，不调用知流工具。
 - 情报必须保留HTTP(S)原始来源；没有来源的综合判断放进briefing。
+- 发布前先用`zhiliu_search`查找同主题或同来源历史。每条情报的`change`必须包含`changeType`、`changeBasis`和`sourceUrls`；除`first_appearance`外必须填写已核验的`relatedItemId`，不能凭文本猜ID。
+- `changeType`只能使用`first_appearance`、`ongoing`、`important_update`、`duplicate_message`、`viewpoint_changed`或`information_invalid`。无法确认关联时先搜索；仍无法确认则按首次出现写入并在依据中说明。
 - 为每次微信指令生成不含身份信息的随机稳定`traceId`，同一次调用重试必须沿用。
 - 为一次发布生成稳定`idempotencyKey`；重试同一内容时沿用原键。
 - Hermes网关能取得真实任务ID时传入`hermesRunId`；不能取得时省略，不得伪造。

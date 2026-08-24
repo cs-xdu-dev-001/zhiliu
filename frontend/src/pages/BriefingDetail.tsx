@@ -71,6 +71,7 @@ export function BriefingDetail() {
   const [actionNotice, setActionNotice] = useState<{ tone: "success" | "error"; text: string } | null>(null);
   const [regenerateOpen, setRegenerateOpen] = useState(false);
   const [regenerateInstruction, setRegenerateInstruction] = useState("");
+  const [regenerateChangesOnly, setRegenerateChangesOnly] = useState(false);
   const regenerateRequestIdRef = useRef("");
   const query = useQuery({
     queryKey: ["briefing", id],
@@ -81,15 +82,18 @@ export function BriefingDetail() {
     mutationFn: () => api.post<TaskRun>(`/api/briefings/${id}/regenerate`, {
       instruction: regenerateInstruction.trim(),
       requestId: regenerateRequestIdRef.current ||= crypto.randomUUID(),
+      ...(regenerateChangesOnly ? { changesOnly: true } : {}),
     }),
     onSuccess: (task) => {
       regenerateRequestIdRef.current = "";
+      setRegenerateChangesOnly(false);
       navigate(`/tasks/${task.id}`);
     },
   });
   function closeRegenerateDialog() {
     if (regenerate.isPending) return;
     regenerateRequestIdRef.current = "";
+    setRegenerateChangesOnly(false);
     setRegenerateInstruction("");
     setRegenerateOpen(false);
     regenerate.reset();
@@ -207,6 +211,7 @@ export function BriefingDetail() {
         <section ref={regenerateDialogRef} className="dialog-panel report-create-dialog" role="dialog" aria-modal="true" aria-labelledby="report-regenerate-title" aria-describedby="report-regenerate-description">
           <div className="dialog-heading"><h2 id="report-regenerate-title">重新生成v{(report.versionNumber ?? 1) + 1}</h2><button aria-label="关闭" disabled={regenerate.isPending} onClick={closeRegenerateDialog}><X size={18} /></button></div>
           <label id="report-regenerate-description">调整要求<textarea data-autofocus maxLength={1000} rows={4} value={regenerateInstruction} onChange={(event) => setRegenerateInstruction(event.target.value)} placeholder="例如：压缩背景说明，重点比较分歧；留空则按默认方式重写。" /></label>
+          <label className="report-change-only"><input type="checkbox" checked={regenerateChangesOnly} onChange={(event) => setRegenerateChangesOnly(event.target.checked)} />只写相较上一版的新变化</label>
           {regenerate.isError && <p className="dialog-error" role="alert">任务创建失败：{regenerate.error instanceof ApiError ? regenerate.error.message : "服务暂时不可用"}。调整要求已保留，可直接重试。</p>}
           <div className="dialog-actions"><button className="secondary-button" disabled={regenerate.isPending} onClick={closeRegenerateDialog}>取消</button><button className="primary-button" disabled={regenerate.isPending} onClick={() => regenerate.mutate()}>{regenerate.isPending ? "正在创建" : regenerate.isError ? "重试生成" : "开始生成"}</button></div>
         </section>

@@ -5,11 +5,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import distinct, func, or_, select
 from sqlalchemy.orm import Session
 
-from app.api.items import serialize_item
+from app.api.items import serialize_change, serialize_item
 from app.api.runs import serialize_task_run
 from app.db import get_db
-from app.models import Briefing, HermesPublication, IntelligenceItem, ItemTopic, PublicationItem, TaskRun, Topic, TopicAlias
-from app.schemas import BriefingResponse, TopicDetail, TopicMergeRequest, TopicPage, TopicStateUpdate, TopicSummary
+from app.models import Briefing, HermesPublication, IntelligenceItem, ItemChange, ItemTopic, PublicationItem, TaskRun, Topic, TopicAlias
+from app.schemas import BriefingResponse, ItemChangeResponse, TopicDetail, TopicMergeRequest, TopicPage, TopicStateUpdate, TopicSummary
 
 router = APIRouter(prefix="/api/topics", tags=["topics"])
 
@@ -101,7 +101,23 @@ def get_topic(topic_id: int, db: Session = Depends(get_db)) -> TopicDetail:
     publication_ids = select(PublicationItem.publication_id).where(PublicationItem.item_id.in_(item_ids))
     briefings = db.scalars(select(Briefing).join(HermesPublication, HermesPublication.briefing_id == Briefing.id).where(HermesPublication.id.in_(publication_ids)).distinct().order_by(Briefing.created_at.desc()).limit(8)).all()
     runs = db.scalars(select(TaskRun).where(or_(TaskRun.topic.ilike(f"%{topic.name}%"), TaskRun.id.in_(select(HermesPublication.task_run_id).where(HermesPublication.id.in_(publication_ids))))).order_by(TaskRun.started_at.desc()).limit(8)).all()
-    return TopicDetail(**_summary(db, topic).model_dump(), aliases=[alias.name for alias in topic.aliases], latest_items=[serialize_item(item) for item in items], related_briefings=[BriefingResponse.model_validate(row) for row in briefings], related_runs=[serialize_task_run(db, row) for row in runs])
+    changes = db.scalars(select(ItemChange).where(ItemChange.item_id.in_(item_ids), ItemChange.status != "unlinked").order_by(ItemChange.detected_at.desc(), ItemChange.id.desc()).limit(20)).all()
+    counts = {kind: sum(change.change_type == kind for change in changes) for kind in ("first_appearance", "important_update", "viewpoint_changed", "information_invalid")}
+    parts = []
+    if counts["first_appearance"]: parts.append(f"新增{counts['first_appearance']}条")
+    if counts["important_update"]: parts.append(f"重要更新{counts['important_update']}条")
+    if counts["viewpoint_changed"]: parts.append(f"观点变化{counts['viewpoint_changed']}条")
+    if counts["information_invalid"]: parts.append(f"失效{counts['information_invalid']}条")
+    return TopicDetail(**_summary(db, topic).model_dump(), aliases=[alias.name for alias in topic.aliases], latest_items=[serialize_item(item) for item in items], related_briefings=[BriefingResponse.model_validate(row) for row in briefings], related_runs=[serialize_task_run(db, row) for row in runs], recent_changes=[serialize_change(change) for change in changes], change_summary="，".join(parts) if parts else "近期暂无可确认的新变化")
+
+
+@router.get("/{topic_id}/changes", response_model=list[ItemChangeResponse])
+def list_topic_changes(topic_id: int, limit: int = Query(default=50, ge=1, le=100), db: Session = Depends(get_db)) -> list[ItemChangeResponse]:
+    if db.get(Topic, topic_id) is None:
+        raise HTTPException(status_code=404, detail="主题不存在")
+    item_ids = select(ItemTopic.item_id).where(ItemTopic.topic_id == topic_id)
+    changes = db.scalars(select(ItemChange).where(ItemChange.item_id.in_(item_ids), ItemChange.status != "unlinked").order_by(ItemChange.detected_at.desc(), ItemChange.id.desc()).limit(limit)).all()
+    return [serialize_change(change) for change in changes]
 
 
 @router.patch("/{topic_id}", response_model=TopicSummary)

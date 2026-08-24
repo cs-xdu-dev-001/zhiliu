@@ -5,10 +5,11 @@ import { Link, useParams, useSearchParams } from "wouter";
 
 import { api, ApiError } from "../api";
 import { EmptyState } from "../components/EmptyState";
-import type { HermesPreference, IntelligenceItem, IntelligenceItemDetail, IntelligenceKind, ItemRevision, MergeCandidate } from "../types";
+import type { ChangeType, HermesPreference, IntelligenceItem, IntelligenceItemDetail, IntelligenceKind, ItemChange, ItemRevision, MergeCandidate } from "../types";
 import { useModalDialog } from "../useModalDialog";
 
 const kindLabels = { news: "热点", paper: "论文", job: "招聘" };
+const changeLabels: Record<ChangeType, string> = { first_appearance: "新出现", ongoing: "持续进展", important_update: "重要更新", duplicate_message: "重复消息", viewpoint_changed: "观点变化", information_invalid: "信息失效" };
 const revisionLabels: Record<ItemRevision["action"], string> = {
   edited: "编辑内容",
   invalidated: "标记无效",
@@ -84,6 +85,7 @@ export function ItemDetail() {
   const [tagEditorOpen, setTagEditorOpen] = useState(false);
   const [tagDraft, setTagDraft] = useState("");
   const [notice, setNotice] = useState<{ tone: "success" | "error"; text: string } | null>(null);
+  const [changeEditor, setChangeEditor] = useState<{ id: number; changeType: ChangeType; relatedItemId: string; basis: string } | null>(null);
 
   const query = useQuery({
     queryKey: ["item", id],
@@ -176,6 +178,11 @@ export function ItemDetail() {
       refreshItem();
     },
   });
+  const updateChange = useMutation({
+    mutationFn: ({ changeId, patch }: { changeId: number; patch: Record<string, unknown> }) => api.patch<ItemChange>(`/api/items/${id}/changes/${changeId}`, patch),
+    onMutate: () => setNotice(null),
+    onSuccess: () => { setChangeEditor(null); setNotice({ tone: "success", text: "变化关联已更新，原记录仍保留" }); refreshItem(); },
+  });
   const { dialogRef: editDialogRef, rememberTrigger: rememberEditTrigger } = useModalDialog<HTMLElement>(editOpen, () => setEditOpen(false), edit.isPending);
   const { dialogRef: mergeDialogRef, rememberTrigger: rememberMergeTrigger } = useModalDialog<HTMLElement>(mergeOpen, () => setMergeOpen(false), merge.isPending);
   const backHref = safeBackHref(searchParams.get("from"));
@@ -186,11 +193,11 @@ export function ItemDetail() {
   }
   if (query.isError) return <div className="inline-error" role="alert">情报加载失败。<button onClick={() => query.refetch()}>重新加载</button></div>;
 
-  const item = query.data;
+  const item = { ...query.data, changes: query.data.changes ?? [] };
   const date = item.publishedAt ?? item.createdAt;
   const merged = item.mergedIntoId !== null;
   const subscriptionOrigin = item.publications.some((publication) => publication.origin === "subscription-hermes");
-  const busy = update.isPending || edit.isPending || updateTags.isPending || validity.isPending || merge.isPending || rerun.isPending || avoidSource.isPending || sourceAvailability.isPending;
+  const busy = update.isPending || edit.isPending || updateTags.isPending || validity.isPending || merge.isPending || rerun.isPending || avoidSource.isPending || sourceAvailability.isPending || updateChange.isPending;
   const sourceUrl = item.sourceUnavailable ? null : safeExternalUrl(item.url);
   const sourcePreference = preferenceSource(item.source);
   const sourceLabel = item.source.trim() || "来源未标注";
@@ -284,6 +291,11 @@ export function ItemDetail() {
             ))}
           </div>
         ) : <p className="trace-empty">历史数据，暂无完整追踪信息</p>}
+      </section>
+
+      <section className="lineage-section" aria-labelledby="change-heading">
+        <div className="lineage-heading"><GitBranch size={19} /><h2 id="change-heading">变化依据</h2></div>
+        {item.changes.length ? <div className="change-history">{item.changes.map((change) => <div className="change-history-row" key={change.id}><div><span className={`change-marker ${change.changeType}`}>{changeLabels[change.changeType]}</span><strong>{change.relatedItemId ? `关联情报#${change.relatedItemId}${change.relatedItemTitle ? ` · ${change.relatedItemTitle}` : ""}` : "未关联历史情报"}</strong><p>{change.basis}</p><time dateTime={change.detectedAt}>{new Date(change.detectedAt).toLocaleString("zh-CN")}</time></div><div className="change-actions"><button onClick={() => setChangeEditor({ id: change.id, changeType: change.changeType, relatedItemId: change.relatedItemId ? String(change.relatedItemId) : "", basis: change.basis })}>修正</button>{change.relatedItemId && <button onClick={() => updateChange.mutate({ changeId: change.id, patch: { unlink: true } })}>解除关联</button>}</div>{changeEditor?.id === change.id && <form className="change-editor" onSubmit={(event) => { event.preventDefault(); updateChange.mutate({ changeId: change.id, patch: { changeType: changeEditor.changeType, relatedItemId: changeEditor.relatedItemId ? Number(changeEditor.relatedItemId) : undefined, basis: changeEditor.basis } }); }}><select aria-label="变化类型" value={changeEditor.changeType} onChange={(event) => setChangeEditor({ ...changeEditor, changeType: event.target.value as ChangeType })}>{Object.entries(changeLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select><input aria-label="关联情报ID" inputMode="numeric" placeholder="关联情报ID" value={changeEditor.relatedItemId} onChange={(event) => setChangeEditor({ ...changeEditor, relatedItemId: event.target.value.replace(/\D/g, "") })} /><input aria-label="变化依据" required maxLength={2000} value={changeEditor.basis} onChange={(event) => setChangeEditor({ ...changeEditor, basis: event.target.value })} /><button disabled={updateChange.isPending}>保存</button><button type="button" onClick={() => setChangeEditor(null)}>取消</button></form>}</div>)}</div> : <p className="trace-empty">暂无变化记录</p>}
       </section>
 
       <section className="lineage-section" aria-labelledby="revision-heading">

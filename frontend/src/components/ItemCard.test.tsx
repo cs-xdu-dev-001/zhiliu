@@ -40,6 +40,13 @@ it("展示微信Hermes组合来源", () => {
   expect(screen.getByText("arXiv · 微信Hermes")).toBeVisible();
 });
 
+it("只展示一个简洁变化标记并隐藏重复消息", () => {
+  const { rerender } = render(<ItemCard item={{ ...item, latestChangeType: "important_update" }} />);
+  expect(screen.getByText("重要更新")).toBeVisible();
+  rerender(<ItemCard item={{ ...item, latestChangeType: "duplicate_message" }} />);
+  expect(screen.queryByText("重复消息")).not.toBeInTheDocument();
+});
+
 it("标题摘要进入独立详情且列表不展开判断理由", () => {
   render(<ItemCard item={item} detailHref="/items/1?from=%2Ffeed%3Fstate%3Dunread" />);
 

@@ -70,6 +70,7 @@ class IntelligenceItem(Base):
     is_ignored: Mapped[bool] = mapped_column(Boolean, default=False)
     is_invalid: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     source_unavailable: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    latest_change_type: Mapped[str | None] = mapped_column(String(30), nullable=True, index=True)
     merged_into_id: Mapped[int | None] = mapped_column(
         ForeignKey("intelligence_items.id"),
         nullable=True,
@@ -99,6 +100,12 @@ class IntelligenceItem(Base):
     topic_links: Mapped[list["ItemTopic"]] = relationship(
         back_populates="item",
         cascade="all, delete-orphan",
+    )
+    changes: Mapped[list["ItemChange"]] = relationship(
+        back_populates="item",
+        cascade="all, delete-orphan",
+        foreign_keys="ItemChange.item_id",
+        order_by="ItemChange.detected_at.desc()",
     )
 
 
@@ -178,6 +185,32 @@ class ItemRevision(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     item: Mapped[IntelligenceItem] = relationship(back_populates="revisions")
+
+
+class ItemChange(Base):
+    __tablename__ = "item_changes"
+    __table_args__ = (
+        Index("ix_item_changes_item_detected", "item_id", "detected_at", "id"),
+        Index("ix_item_changes_related_item", "related_item_id", "detected_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    item_id: Mapped[int] = mapped_column(ForeignKey("intelligence_items.id", ondelete="CASCADE"), index=True)
+    related_item_id: Mapped[int | None] = mapped_column(ForeignKey("intelligence_items.id"), nullable=True)
+    task_run_id: Mapped[int | None] = mapped_column(ForeignKey("task_runs.id"), nullable=True, index=True)
+    publication_id: Mapped[int | None] = mapped_column(ForeignKey("hermes_publications.id"), nullable=True, index=True)
+    change_type: Mapped[str] = mapped_column(String(30), index=True)
+    basis: Mapped[str] = mapped_column(Text, default="")
+    source_urls_json: Mapped[str] = mapped_column(Text, default="[]")
+    before_json: Mapped[str] = mapped_column(Text, default="{}")
+    after_json: Mapped[str] = mapped_column(Text, default="{}")
+    status: Mapped[str] = mapped_column(String(20), default="confirmed", index=True)
+    idempotency_key: Mapped[str] = mapped_column(String(200), unique=True, index=True)
+    detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+    item: Mapped[IntelligenceItem] = relationship(back_populates="changes", foreign_keys=[item_id])
+    related_item: Mapped[IntelligenceItem | None] = relationship(foreign_keys=[related_item_id])
 
 
 class Briefing(Base):

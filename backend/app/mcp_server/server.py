@@ -99,7 +99,7 @@ def build_mcp_server(
         items: list[PublishItem] | None = None,
         briefing: PublishBriefing | None = None,
     ) -> PublishReceipt:
-        """发布Hermes已经完成的一次性整理结果。"""
+        """发布整理结果；每条变化应给出changeType、changeBasis、sourceUrls，非首次出现还须给relatedItemId。"""
         payload = PublishPayload.model_validate(
             {
                 "idempotencyKey": idempotencyKey,

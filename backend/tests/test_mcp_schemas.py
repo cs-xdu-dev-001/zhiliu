@@ -61,6 +61,17 @@ def test_publish_accepts_camel_case_and_normalizes_keywords() -> None:
     assert parsed.items[0].keywords == ["Agent", "RAG"]
 
 
+def test_publish_change_metadata_uses_explicit_camel_case_contract() -> None:
+    payload = valid_payload()
+    payload["items"][0]["change"] = {
+        "changeType": "important_update", "relatedItemId": 7,
+        "changeBasis": "官方更新日志新增能力", "sourceUrls": ["https://example.com/release"],
+    }
+    parsed = PublishPayload.model_validate(payload)
+    dumped = parsed.model_dump(mode="json", by_alias=True, exclude_none=True)
+    assert dumped["items"][0]["change"] == payload["items"][0]["change"]
+
+
 def test_publish_requires_trace_id() -> None:
     payload = valid_payload()
     payload.pop("traceId")

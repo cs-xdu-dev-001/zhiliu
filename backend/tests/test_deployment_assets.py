@@ -39,6 +39,10 @@ def test_hermes_assets_use_authenticated_local_mcp() -> None:
     assert "长期偏好" in skill
     assert "zhiliu_search" in skill
     assert "sourceUnavailable=true" in skill
+    assert "changeType" in skill
+    assert "changeBasis" in skill
+    assert "relatedItemId" in skill
+    assert "sourceUrls" in skill
 
 
 def test_nginx_has_dedicated_streaming_mcp_proxy() -> None:

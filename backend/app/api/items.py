@@ -16,6 +16,7 @@ from app.models import (
     HermesPublication,
     IntelligenceItem,
     ItemBulkOperation,
+    ItemChange,
     ItemRevision,
     ItemTag,
     ItemTopic,
@@ -31,6 +32,8 @@ from app.schemas import (
     ItemBulkUpdate,
     ItemBulkUpdateResponse,
     ItemContentUpdate,
+    ItemChangeResponse,
+    ItemChangeUpdate,
     ItemDetailResponse,
     ItemMergeRequest,
     ItemPage,
@@ -84,9 +87,21 @@ def serialize_item(record: IntelligenceItem) -> IntelligenceItemResponse:
         is_invalid=record.is_invalid,
         is_stale=item_is_stale(record),
         source_unavailable=record.source_unavailable,
+        latest_change_type=record.latest_change_type,
         merged_into_id=record.merged_into_id,
         tags=sorted(tag.name for tag in record.tags),
         created_at=record.created_at,
+    )
+
+
+def serialize_change(record: ItemChange) -> ItemChangeResponse:
+    return ItemChangeResponse(
+        id=record.id, item_id=record.item_id, related_item_id=record.related_item_id,
+        related_item_title=record.related_item.title if record.related_item else None,
+        task_run_id=record.task_run_id, publication_id=record.publication_id,
+        change_type=record.change_type, basis=record.basis,
+        source_urls=json.loads(record.source_urls_json), before=json.loads(record.before_json),
+        after=json.loads(record.after_json), status=record.status, detected_at=record.detected_at,
     )
 
 
@@ -369,6 +384,11 @@ def get_item(item_id: int, db: Session = Depends(get_db)) -> ItemDetailResponse:
         .where(ItemRevision.item_id == item_id)
         .order_by(ItemRevision.created_at.desc(), ItemRevision.id.desc())
     ).all()
+    changes = db.scalars(
+        select(ItemChange).options(joinedload(ItemChange.related_item))
+        .where(ItemChange.item_id == item_id)
+        .order_by(ItemChange.detected_at.desc(), ItemChange.id.desc())
+    ).all()
     merged_into = db.get(IntelligenceItem, record.merged_into_id) if record.merged_into_id else None
     return ItemDetailResponse(
         **serialize_item(record).model_dump(),
@@ -384,6 +404,7 @@ def get_item(item_id: int, db: Session = Depends(get_db)) -> ItemDetailResponse:
             )
             for revision in revisions
         ],
+        changes=[serialize_change(change) for change in changes],
         merged_into=MergedItemResponse(id=merged_into.id, title=merged_into.title) if merged_into else None,
     )
 
@@ -487,9 +508,54 @@ def update_item_source_availability(
     after = item_snapshot(record)
     if before != after:
         add_revision(db, record, "source_unavailable" if payload.unavailable else "source_restored", before, after)
+        from app.services.change_detection import ChangeInput, record_change
+        change_type = "information_invalid" if payload.unavailable else "ongoing"
+        db.flush()
+        revision_count = db.scalar(select(func.count()).select_from(ItemRevision).where(ItemRevision.item_id == record.id)) or 0
+        record_change(
+            db, record, ChangeInput(change_type, record.id, "用户核验原文状态", (record.url,)),
+            idempotency_key=f"source-status:{record.id}:{change_type}:{revision_count}",
+            before=before, after=after,
+        )
     db.commit()
     db.refresh(record)
     return serialize_item(record)
+
+
+@router.patch("/items/{item_id}/changes/{change_id}", response_model=ItemChangeResponse)
+def update_item_change(
+    item_id: int, change_id: int, payload: ItemChangeUpdate, db: Session = Depends(get_db),
+) -> ItemChangeResponse:
+    change = db.get(ItemChange, change_id)
+    if change is None or change.item_id != item_id:
+        raise HTTPException(status_code=404, detail="变化记录不存在")
+    before = {"changeType": change.change_type, "relatedItemId": change.related_item_id, "basis": change.basis, "status": change.status}
+    if payload.change_type is not None:
+        change.change_type = payload.change_type
+    if payload.basis is not None:
+        change.basis = payload.basis
+    if payload.unlink:
+        change.related_item_id = None
+        change.status = "unlinked"
+    elif payload.related_item_id is not None:
+        if payload.related_item_id == item_id:
+            raise HTTPException(status_code=422, detail="不能关联当前情报自身")
+        related = db.get(IntelligenceItem, payload.related_item_id)
+        if related is None:
+            raise HTTPException(status_code=404, detail="关联情报不存在")
+        change.related_item_id = related.id
+        change.status = "corrected"
+    else:
+        change.status = "corrected"
+    item = db.get(IntelligenceItem, item_id)
+    after = {"changeType": change.change_type, "relatedItemId": change.related_item_id, "basis": change.basis, "status": change.status}
+    add_revision(db, item, "change_corrected", before, after)
+    db.flush()
+    latest = db.scalar(select(ItemChange).where(ItemChange.item_id == item_id, ItemChange.status != "unlinked").order_by(ItemChange.detected_at.desc(), ItemChange.id.desc()).limit(1))
+    item.latest_change_type = latest.change_type if latest else None
+    db.commit()
+    db.refresh(change)
+    return serialize_change(change)
 
 
 @router.get("/items/{item_id}/merge-candidates", response_model=list[MergeCandidateResponse])

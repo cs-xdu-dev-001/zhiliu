@@ -20,10 +20,12 @@ from app.models import (
     Briefing,
     HermesPublication,
     IntelligenceItem,
+    ItemChange,
     PublicationItem,
     Subscription,
     TaskRun,
 )
+from app.services.change_detection import ChangeInput, apply_snapshot, content_snapshot, incoming_snapshot, meaningful_change, record_automatic_revision, record_change
 from app.services.run_service import canonical_item, item_fingerprint, normalize_url
 from app.services.preferences import PreferenceService
 from app.services.quality import record_quality_decisions
@@ -257,7 +259,7 @@ class PublicationService:
                 if not preference_service.filters_source(item.source, payload.kind)
             ]
             filtered = len(payload.items) - len(accepted_items)
-            resolved_items = self._resolve_items(subscription.id, payload)
+            resolved_items, change_events = self._resolve_items(subscription.id, payload)
             inserted = sum(was_inserted for _, was_inserted in resolved_items)
             skipped = len(resolved_items) - inserted
             briefing = self._insert_briefing(
@@ -273,7 +275,10 @@ class PublicationService:
                 skipped,
                 filtered,
                 briefing.id if briefing else None,
+                sum(event.change_type not in {"first_appearance", "duplicate_message"} for event in change_events),
             )
+            for event in change_events:
+                event.publication_id = publication.id
             self.db.add_all(
                 PublicationItem(
                     publication_id=publication.id,
@@ -323,6 +328,9 @@ class PublicationService:
                 except Exception:
                     self.db.rollback()
             raise PublicationFailure("发布失败，未写入知流") from None
+        except PublicationConflict:
+            self.db.rollback()
+            raise
         except Exception:
             self.db.rollback()
             raise PublicationFailure("发布失败，未写入知流") from None
@@ -377,8 +385,9 @@ class PublicationService:
         self,
         subscription_id: int,
         payload: PublishPayload,
-    ) -> list[tuple[IntelligenceItem, bool]]:
+    ) -> tuple[list[tuple[IntelligenceItem, bool]], list[ItemChange]]:
         resolved: list[tuple[IntelligenceItem, bool]] = []
+        change_events: list[ItemChange] = []
         seen_item_ids: set[int] = set()
         preference_service = PreferenceService(self.db)
         items = [
@@ -386,14 +395,38 @@ class PublicationService:
             for item in payload.items
             if not preference_service.filters_source(item.source, payload.kind)
         ]
-        for item in items:
+        task = self.db.scalar(select(TaskRun).where(TaskRun.trace_id == payload.trace_id))
+        for ordinal, item in enumerate(items):
+            if item.change and item.change.related_item_id and self.db.get(IntelligenceItem, item.change.related_item_id) is None:
+                raise PublicationConflict(f"关联情报{item.change.related_item_id}不存在，请先用zhiliu_search核验ID")
             normalized_url = normalize_url(str(item.url)).rstrip("/")
             fingerprint = item_fingerprint(item.title, normalized_url)
             existing = self.db.scalar(
                 select(IntelligenceItem).where(IntelligenceItem.fingerprint == fingerprint)
             )
+            if existing is None:
+                existing = self.db.scalar(select(IntelligenceItem).where(IntelligenceItem.url == normalized_url, IntelligenceItem.merged_into_id.is_(None)).order_by(IntelligenceItem.id.desc()))
             if existing is not None:
+                matched = existing
                 existing = canonical_item(self.db, existing)
+                before = content_snapshot(existing)
+                source = item.source if item.source.endswith(" · 微信Hermes") else f"{item.source} · 微信Hermes"
+                adjusted_importance = preference_service.adjust_importance(item.source, payload.kind, item.importance)
+                after = incoming_snapshot(item, kind=payload.kind, url=normalized_url, source=source, importance=adjusted_importance)
+                explicit = item.change
+                detected = explicit.change_type if explicit else ("important_update" if meaningful_change(before, after) else "duplicate_message")
+                if detected == "information_invalid":
+                    existing.source_unavailable = True
+                    after["sourceUnavailable"] = True
+                if meaningful_change(before, after) and detected not in {"duplicate_message", "information_invalid"}:
+                    apply_snapshot(existing, after, fingerprint if matched.id == existing.id else existing.fingerprint)
+                    record_automatic_revision(self.db, existing, before, after)
+                    link_item_topics(self.db, existing)
+                related_id = explicit.related_item_id if explicit else existing.id
+                basis = explicit.change_basis if explicit else ("同一来源内容发生变化" if meaningful_change(before, after) else "标题、来源和内容与已有情报一致")
+                sources = tuple(str(url) for url in explicit.source_urls) if explicit else (normalized_url,)
+                event = record_change(self.db, existing, ChangeInput(detected, related_id, basis, sources), idempotency_key=f"mcp:{payload.idempotency_key}:{ordinal}", task_run_id=task.id if task else None, before=before, after=after)
+                change_events.append(event)
                 if existing.id not in seen_item_ids:
                     resolved.append((existing, False))
                     seen_item_ids.add(existing.id)
@@ -421,9 +454,18 @@ class PublicationService:
             self.db.add(record)
             self.db.flush()
             link_item_topics(self.db, record)
+            explicit = item.change
+            detected = explicit.change_type if explicit else "first_appearance"
+            if detected == "information_invalid":
+                record.source_unavailable = True
+            related_id = explicit.related_item_id if explicit else None
+            basis = explicit.change_basis if explicit else "首次收录该来源"
+            sources = tuple(str(url) for url in explicit.source_urls) if explicit else (normalized_url,)
+            event = record_change(self.db, record, ChangeInput(detected, related_id, basis, sources), idempotency_key=f"mcp:{payload.idempotency_key}:{ordinal}", task_run_id=task.id if task else None)
+            change_events.append(event)
             resolved.append((record, True))
             seen_item_ids.add(record.id)
-        return resolved
+        return resolved, change_events
 
     def _insert_briefing(
         self,
@@ -457,6 +499,7 @@ class PublicationService:
         skipped: int,
         filtered: int,
         briefing_id: int | None,
+        changed: int,
     ) -> HermesPublication:
         task = self.db.scalar(
             select(TaskRun).where(TaskRun.trace_id == payload.trace_id)
@@ -482,6 +525,8 @@ class PublicationService:
             now = datetime.now(timezone.utc)
             report_title = self.db.get(Briefing, briefing_id).title if briefing_id else None
             summary = f"新增{inserted}条情报，复用{skipped}条"
+            if changed:
+                summary += f"，确认{changed}条变化"
             if filtered:
                 summary += f"，按偏好过滤{filtered}条"
             if report_title:

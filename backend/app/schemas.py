@@ -163,6 +163,7 @@ class IntelligenceItemResponse(ApiModel):
     is_invalid: bool
     is_stale: bool
     source_unavailable: bool
+    latest_change_type: str | None = None
     merged_into_id: int | None
     tags: list[str] = Field(default_factory=list)
     created_at: datetime
@@ -193,6 +194,29 @@ class ItemRevisionResponse(ApiModel):
     before: dict[str, Any]
     after: dict[str, Any]
     created_at: datetime
+
+
+class ItemChangeResponse(ApiModel):
+    id: int
+    item_id: int
+    related_item_id: int | None
+    related_item_title: str | None = None
+    task_run_id: int | None
+    publication_id: int | None
+    change_type: str
+    basis: str
+    source_urls: list[str]
+    before: dict[str, Any]
+    after: dict[str, Any]
+    status: str
+    detected_at: datetime
+
+
+class ItemChangeUpdate(ApiModel):
+    change_type: Literal["first_appearance", "ongoing", "important_update", "duplicate_message", "viewpoint_changed", "information_invalid"] | None = None
+    related_item_id: int | None = Field(default=None, gt=0)
+    basis: str | None = Field(default=None, min_length=1, max_length=2000)
+    unlink: bool = False
 
 
 class MergedItemResponse(ApiModel):
@@ -234,6 +258,7 @@ class ItemDetailResponse(IntelligenceItemResponse):
     publications: list[PublicationRecordResponse]
     trace_available: bool
     revisions: list[ItemRevisionResponse]
+    changes: list[ItemChangeResponse] = Field(default_factory=list)
     merged_into: MergedItemResponse | None
 
 
@@ -266,6 +291,7 @@ class BriefingGenerationRequest(ApiModel):
     item_ids: list[int] = Field(min_length=1, max_length=20)
     instruction: str = Field(default="", max_length=1000)
     request_id: str = Field(min_length=8, max_length=160)
+    changes_only: bool = False
 
     @field_validator("item_ids")
     @classmethod
@@ -278,6 +304,7 @@ class BriefingRegenerationRequest(ApiModel):
     instruction: str = Field(default="", max_length=1000)
     request_id: str = Field(min_length=8, max_length=160)
     item_ids: list[int] = Field(default_factory=list, max_length=20)
+    changes_only: bool = False
 
     @field_validator("item_ids")
     @classmethod
@@ -450,6 +477,8 @@ class TopicDetail(TopicSummary):
     latest_items: list[IntelligenceItemResponse]
     related_briefings: list[BriefingResponse]
     related_runs: list["TaskRunResponse"]
+    recent_changes: list[ItemChangeResponse] = Field(default_factory=list)
+    change_summary: str = "近期暂无可确认的新变化"
 
 
 class SearchResponse(ApiModel):

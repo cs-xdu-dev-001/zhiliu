@@ -68,6 +68,7 @@ export function Feed() {
   const [confirmAction, setConfirmAction] = useState<BulkItemAction | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
   const [reportInstruction, setReportInstruction] = useState("");
+  const [reportChangesOnly, setReportChangesOnly] = useState(false);
   const [saveViewOpen, setSaveViewOpen] = useState(false);
   const [viewName, setViewName] = useState("");
   const [tagDraft, setTagDraft] = useState("");
@@ -198,12 +199,14 @@ export function Feed() {
         itemIds: [...selected],
         instruction: reportInstruction.trim(),
         requestId: reportRequestIdRef.current ||= crypto.randomUUID(),
+        ...(reportChangesOnly ? { changesOnly: true } : {}),
       },
     ),
     onSuccess: (task) => {
       reportRequestIdRef.current = "";
       setReportOpen(false);
       setReportInstruction("");
+      setReportChangesOnly(false);
       setSelected(new Set());
       navigate(`/tasks/${task.id}`);
     },
@@ -212,6 +215,7 @@ export function Feed() {
     if (generateReport.isPending) return;
     reportRequestIdRef.current = "";
     setReportInstruction("");
+    setReportChangesOnly(false);
     setReportOpen(false);
     generateReport.reset();
   }
@@ -339,6 +343,7 @@ export function Feed() {
         <section ref={reportDialogRef} className="dialog-panel report-create-dialog" role="dialog" aria-modal="true" aria-labelledby="report-create-title" aria-describedby="report-create-description">
           <div className="dialog-heading"><h2 id="report-create-title">{supplementReportId ? `补充${selected.size}条来源并生成新版` : `用${selected.size}条情报生成报告`}</h2><button aria-label="关闭" disabled={generateReport.isPending} onClick={closeReportDialog}><X size={18} /></button></div>
           <label id="report-create-description">整理要求<textarea data-autofocus maxLength={1000} rows={4} value={reportInstruction} onChange={(event) => setReportInstruction(event.target.value)} placeholder="例如：比较共同趋势，说明对研究工作的影响；留空则由Hermes自行组织。" /></label>
+          <label className="report-change-only"><input type="checkbox" checked={reportChangesOnly} onChange={(event) => setReportChangesOnly(event.target.checked)} />只写相较历史记录的新变化</label>
           <p className="dialog-error" role="alert">{generateReport.isError ? `创建失败：${generateReport.error instanceof ApiError ? generateReport.error.message : "服务暂时不可用"}。所选内容已保留，可直接重试。` : ""}</p>
           <div className="dialog-actions"><button className="secondary-button" disabled={generateReport.isPending} onClick={closeReportDialog}>取消</button><button className="primary-button" disabled={generateReport.isPending} onClick={() => generateReport.mutate()}>{generateReport.isPending ? "正在创建" : generateReport.isError ? "重试创建" : "交给Hermes"}</button></div>
         </section>

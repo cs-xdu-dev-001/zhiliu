@@ -29,6 +29,7 @@ export interface IntelligenceItem {
   isInvalid: boolean;
   isStale?: boolean;
   sourceUnavailable?: boolean;
+  latestChangeType?: ChangeType | null;
   mergedIntoId: number | null;
   tags: string[];
   createdAt: string;
@@ -40,6 +41,24 @@ export interface ItemRevision {
   before: Record<string, unknown> | null;
   after: Record<string, unknown> | null;
   createdAt: string;
+}
+
+export type ChangeType = "first_appearance" | "ongoing" | "important_update" | "duplicate_message" | "viewpoint_changed" | "information_invalid";
+
+export interface ItemChange {
+  id: number;
+  itemId: number;
+  relatedItemId: number | null;
+  relatedItemTitle: string | null;
+  taskRunId: number | null;
+  publicationId: number | null;
+  changeType: ChangeType;
+  basis: string;
+  sourceUrls: string[];
+  before: Record<string, unknown>;
+  after: Record<string, unknown>;
+  status: "confirmed" | "corrected" | "unlinked";
+  detectedAt: string;
 }
 
 export interface MergedItem {
@@ -74,6 +93,7 @@ export interface IntelligenceItemDetail extends IntelligenceItem {
   publications: PublicationRecord[];
   traceAvailable: boolean;
   revisions: ItemRevision[];
+  changes: ItemChange[];
   mergedInto: MergedItem | null;
 }
 
@@ -407,6 +427,8 @@ export interface TopicDetail extends TopicSummary {
   latestItems: IntelligenceItem[];
   relatedBriefings: Briefing[];
   relatedRuns: TaskRun[];
+  recentChanges: ItemChange[];
+  changeSummary: string;
 }
 
 export type PreferenceScope = "source" | "topic" | "output";

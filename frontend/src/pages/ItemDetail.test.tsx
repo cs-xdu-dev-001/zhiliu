@@ -21,6 +21,7 @@ const item = {
   isInvalid: false, mergedIntoId: null, mergedInto: null,
   tags: ["重点"],
   traceAvailable: true,
+  changes: [{ id: 21, itemId: 1, relatedItemId: 2, relatedItemTitle: "旧版Agent框架", taskRunId: 4, publicationId: 7, changeType: "important_update" as const, basis: "官方更新日志新增工具能力", sourceUrls: ["https://example.com"], before: { summary: "旧摘要" }, after: { summary: "完整摘要。" }, status: "confirmed" as const, detectedAt: "2026-08-01T01:30:00Z" }],
   revisions: [{ id: 11, action: "edited", before: { title: "旧标题" }, after: { title: "Agent框架发布新版本" }, createdAt: "2026-08-01T02:00:00Z" }],
   publications: [{
     id: 7, traceId: "trace-agent-7", origin: "weixin-hermes", requestSummary: "整理Agent更新并放进知流",
@@ -54,6 +55,15 @@ it("显示完整情报并返回来源列表", async () => {
   expect(screen.getByRole("link", { name: "返回情报列表" })).toHaveAttribute("href", "/feed?state=unread");
   expect(screen.getByRole("link", { name: /打开原文/ })).toHaveAttribute("href", "https://example.com");
   expect(screen.getByText("更多维护").closest("details")).not.toHaveAttribute("open");
+});
+
+it("展示变化依据并允许解除精确关联", async () => {
+  patch.mockResolvedValue({ ...item.changes[0], relatedItemId: null, status: "unlinked" });
+  renderPage();
+  expect(await screen.findByRole("heading", { name: "变化依据" })).toBeVisible();
+  expect(screen.getByText("官方更新日志新增工具能力")).toBeVisible();
+  await userEvent.click(screen.getByRole("button", { name: "解除关联" }));
+  expect(patch).toHaveBeenCalledWith("/api/items/1/changes/21", { unlink: true });
 });
 
 it("可以在详情收藏", async () => {

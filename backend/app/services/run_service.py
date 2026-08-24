@@ -8,7 +8,8 @@ from urllib.parse import urlsplit, urlunsplit
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import Briefing, HermesPublication, IntelligenceItem, PublicationItem, TaskRun
+from app.models import Briefing, HermesPublication, IntelligenceItem, ItemChange, PublicationItem, TaskRun
+from app.services.change_detection import ChangeInput, apply_snapshot, content_snapshot, incoming_snapshot, meaningful_change, record_automatic_revision, record_change
 from app.services.hermes import HermesClient, HermesTimeout, HermesUnavailable
 from app.services.quality import record_quality_decisions
 from app.services.topics import link_item_topics
@@ -81,14 +82,27 @@ class RunService:
             self.db.commit()
 
             resolved_items: list[tuple[IntelligenceItem, bool]] = []
+            change_events: list[ItemChange] = []
             seen_item_ids: set[int] = set()
             for item in result.items:
                 fingerprint = item_fingerprint(item.title, item.url)
                 existing = self.db.scalar(
                     select(IntelligenceItem).where(IntelligenceItem.fingerprint == fingerprint)
                 )
+                normalized_url = normalize_url(item.url)
+                if existing is None:
+                    existing = self.db.scalar(select(IntelligenceItem).where(IntelligenceItem.url == normalized_url, IntelligenceItem.merged_into_id.is_(None)).order_by(IntelligenceItem.id.desc()))
                 if existing is not None:
+                    matched = existing
                     existing = canonical_item(self.db, existing)
+                    before = content_snapshot(existing)
+                    after = incoming_snapshot(item, kind=item.kind, url=normalized_url)
+                    changed = meaningful_change(before, after)
+                    if changed:
+                        apply_snapshot(existing, after, fingerprint if matched.id == existing.id else existing.fingerprint)
+                        record_automatic_revision(self.db, existing, before, after)
+                        link_item_topics(self.db, existing)
+                    change_events.append(record_change(self.db, existing, ChangeInput("important_update" if changed else "duplicate_message", existing.id, "同一来源内容发生变化" if changed else "本轮结果与已有情报一致", (normalized_url,)), idempotency_key=f"task:{task.id}:item:{len(change_events)}", task_run_id=task.id, before=before, after=after))
                     if existing.id not in seen_item_ids:
                         resolved_items.append((existing, False))
                         seen_item_ids.add(existing.id)
@@ -109,6 +123,7 @@ class RunService:
                 self.db.add(record)
                 self.db.flush()
                 link_item_topics(self.db, record)
+                change_events.append(record_change(self.db, record, ChangeInput("first_appearance", None, "首次收录该来源", (record.url,)), idempotency_key=f"task:{task.id}:item:{len(change_events)}", task_run_id=task.id))
                 resolved_items.append((record, True))
                 seen_item_ids.add(record.id)
 
@@ -142,6 +157,8 @@ class RunService:
             )
             self.db.add(publication)
             self.db.flush()
+            for event in change_events:
+                event.publication_id = publication.id
             self.db.add_all(
                 PublicationItem(
                     publication_id=publication.id,
@@ -157,7 +174,7 @@ class RunService:
             task.stage = "completed"
             task.heartbeat_at = datetime.now(timezone.utc)
             task.result_summary = (
-                f"新增{inserted}条情报，复用{len(resolved_items) - inserted}条，"
+                f"新增{inserted}条情报，更新{sum(event.change_type == 'important_update' for event in change_events)}条，复用{sum(event.change_type == 'duplicate_message' for event in change_events)}条，"
                 f"生成报告《{briefing.title}》"
             )
         except (HermesUnavailable, HermesTimeout) as exc:

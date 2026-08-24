@@ -12,12 +12,13 @@
 - 日报、周报和任务失败记录
 - 自然语言搜索已有情报和报告
 - 主题信号中心：从情报关键词、订阅和偏好自动归集主题，比较近7天与此前7天变化
+- 变化检测：区分首次出现、持续进展、重要更新、重复消息、观点变化和信息失效，保留前后快照与精确关联
 - Hermes长期偏好与微信侧内容修正
 - 内容质量中心：查看过滤、去重与写入理由，并可恢复误过滤内容
 - 订阅健康：查看近30天成功率、连续失败、运行时长与产出量
 - 未配置Hermes时的完整演示模式
 
-主题页支持搜索、关注、置顶和静音；主题详情会汇总近7天/30天情报量、来源数，并关联原始情报、报告和微信Hermes任务。主题别名采用Unicode规范化，合并主题时保留已有情报关联。
+主题页支持搜索、关注、置顶和静音；主题详情会汇总近7天/30天情报量、来源数和近期增量，并关联原始情报、报告和微信Hermes任务。情报详情可核验变化依据、解除错误关联或重新关联历史情报；生成报告时可选择只总结新变化。主题别名采用Unicode规范化，合并主题时保留已有情报关联。
 
 ## 本地运行
 
@@ -110,7 +111,7 @@ hermes mcp list
 hermes skills list
 ```
 
-配置中的`http://127.0.0.1:8080/api/mcp`适用于Hermes和知流部署在同一台服务器、Web仅绑定本机8080端口的情况。验收时可直接在微信发送：“请检索今天最重要的三条Agent动态，整理好以后放进知流。”Hermes先调用`zhiliu_get_preferences`读取长期偏好，再调用`zhiliu_begin_task`登记任务，并在检索、整理、写入阶段调用`zhiliu_update_task`上报进度，完成后调用`zhiliu_publish`；任一步失败则调用`zhiliu_report_failure`。只有发布工具返回成功后才应确认写入，并把回执中的结果摘要、`briefingUrl`和`traceUrl`回复给用户。开始回执中的`taskUrl`可用于查看实时进度。
+配置中的`http://127.0.0.1:8080/api/mcp`适用于Hermes和知流部署在同一台服务器、Web仅绑定本机8080端口的情况。验收时可直接在微信发送：“请检索今天最重要的三条Agent动态，整理好以后放进知流。”Hermes先调用`zhiliu_get_preferences`读取长期偏好，再调用`zhiliu_begin_task`登记任务，并在检索、整理、写入阶段调用`zhiliu_update_task`上报进度，完成后调用`zhiliu_publish`；每条变化需提交`changeType`、`changeBasis`和`sourceUrls`，非首次出现还需提交经`zhiliu_search`核验的`relatedItemId`。任一步失败则调用`zhiliu_report_failure`。只有发布工具返回成功后才应确认写入，并把回执中的结果摘要、`briefingUrl`和`traceUrl`回复给用户。开始回执中的`taskUrl`可用于查看实时进度。
 
 Hermes还可用`zhiliu_search`回答“知流里最近有哪些Agent框架更新”，用`zhiliu_save_preference`和`zhiliu_remove_preference`维护用户明确表达的长期偏好，并在情报ID唯一明确时用`zhiliu_update_item`修正内容。网页顶部搜索入口会同时检索情报和报告；“订阅与任务→Hermes偏好”可查看和维护同一组偏好。
 

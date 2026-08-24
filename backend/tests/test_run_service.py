@@ -4,7 +4,7 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import Briefing, HermesPublication, IntelligenceItem, PublicationItem, TaskRun
+from app.models import Briefing, HermesPublication, IntelligenceItem, ItemChange, PublicationItem, TaskRun
 from app.services.hermes import HermesBriefing, HermesItem, HermesResult
 from app.services.hermes import HermesUnavailable
 from app.services.run_service import RunService, item_fingerprint
@@ -67,7 +67,7 @@ async def test_run_service_persists_result_and_completes_task(
 
 
 @pytest.mark.asyncio
-async def test_run_service_does_not_overwrite_existing_item_state(
+async def test_run_service_updates_source_content_without_overwriting_user_state(
     db_session: Session,
     subscription,
 ) -> None:
@@ -93,7 +93,7 @@ async def test_run_service_does_not_overwrite_existing_item_state(
 
     assert db_session.scalar(select(func.count()).select_from(IntelligenceItem)) == 1
     assert existing.is_saved is True
-    assert existing.summary == "old"
+    assert existing.summary == "工具调用可靠性提升。"
     publication = db_session.scalar(select(HermesPublication))
     link = db_session.scalar(select(PublicationItem))
     assert publication.item_count == 0
@@ -156,4 +156,5 @@ async def test_run_service_requeues_transient_failure_before_final_failure(db_se
     assert task.status == "queued"
     assert task.retry_count == 1
     assert task.finished_at is None
+    assert db_session.scalar(select(func.count()).select_from(ItemChange)) == 0
 

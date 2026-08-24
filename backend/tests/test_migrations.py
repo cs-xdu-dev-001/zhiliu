@@ -61,9 +61,9 @@ def test_empty_database_is_upgraded_to_traceable_schema(tmp_path: Path) -> None:
     assert task_indexes["uq_task_runs_active_retry"]["unique"] == 1
     assert task_indexes["uq_task_runs_active_report_series"]["unique"] == 1
     item_columns = {column["name"] for column in inspector.get_columns("intelligence_items")}
-    assert {"is_invalid", "merged_into_id", "source_unavailable"} <= item_columns
+    assert {"is_invalid", "merged_into_id", "source_unavailable", "latest_change_type"} <= item_columns
     assert "item_revisions" in inspector.get_table_names()
-    assert {"item_tags", "saved_views", "item_bulk_operations"} <= set(inspector.get_table_names())
+    assert {"item_tags", "saved_views", "item_bulk_operations", "item_changes"} <= set(inspector.get_table_names())
     item_indexes = {index["name"] for index in inspector.get_indexes("intelligence_items")}
     revision_indexes = {index["name"] for index in inspector.get_indexes("item_revisions")}
     assert "ix_intelligence_items_feed_default" in item_indexes

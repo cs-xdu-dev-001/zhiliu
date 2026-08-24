@@ -4,6 +4,7 @@ import { Link } from "wouter";
 import type { IntelligenceItem } from "../types";
 
 const kindLabels = { news: "热点", paper: "论文", job: "招聘" };
+const changeLabels = { first_appearance: "新出现", ongoing: "持续进展", important_update: "重要更新", duplicate_message: "重复消息", viewpoint_changed: "观点变化", information_invalid: "信息失效" } as const;
 
 function importanceLabel(importance: number) {
   if (importance >= 0.8) return "高优先级";
@@ -53,6 +54,7 @@ export function ItemCard({
           {item.mergedIntoId !== null ? <span className="invalid-tag">已合并</span> : item.isInvalid && <span className="invalid-tag">无效</span>}
           {item.isStale && !item.isInvalid && item.mergedIntoId === null && <span className="stale-tag">可能过期</span>}
           {item.sourceUnavailable && <span className="source-failed-tag">原文失效</span>}
+          {item.latestChangeType && item.latestChangeType !== "duplicate_message" && <span className={`change-marker ${item.latestChangeType}`}>{changeLabels[item.latestChangeType]}</span>}
           <span>{sourceLabel}</span>
           <time dateTime={date}>{new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric" }).format(new Date(date))}</time>
           {item.isRead && <span className="read-state">已读</span>}

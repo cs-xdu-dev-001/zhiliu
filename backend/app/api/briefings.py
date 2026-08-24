@@ -61,6 +61,7 @@ def _queue_report(
     request_id: str,
     series_id: str,
     version_number: int,
+    changes_only: bool = False,
 ) -> TaskRunResponse:
     expected_instruction = instruction.strip() or "根据所选情报生成专题报告"
     items: list[IntelligenceItem] = []
@@ -73,8 +74,11 @@ def _queue_report(
         if item.id not in seen:
             items.append(item)
             seen.add(item.id)
+    if changes_only:
+        items = [item for item in items if item.latest_change_type not in (None, "duplicate_message")]
+        expected_instruction = f"仅总结相较历史记录的新变化；不要重复无变化背景。{expected_instruction}"
     if not items:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="没有可用于生成报告的情报")
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="没有可用于生成报告的情报")
     expected_ids = json.dumps([item.id for item in items])
     existing = db.scalar(select(TaskRun).where(TaskRun.trace_id == request_id))
     if existing is not None:
@@ -143,6 +147,7 @@ def generate_briefing(
         request_id=payload.request_id,
         series_id=str(uuid4()),
         version_number=1,
+        changes_only=payload.changes_only,
     )
 
 
@@ -339,5 +344,6 @@ def regenerate_briefing(
         request_id=payload.request_id,
         series_id=series_id,
         version_number=latest_version + 1,
+        changes_only=payload.changes_only,
     )
 
