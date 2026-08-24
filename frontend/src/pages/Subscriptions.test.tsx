@@ -5,8 +5,8 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import { Subscriptions } from "./Subscriptions";
 
-const { get, post, put, remove, download } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), put: vi.fn(), remove: vi.fn(), download: vi.fn() }));
-vi.mock("../api", () => ({ api: { get, post, put, delete: remove, download } }));
+const { get, post, postRaw, put, remove, download } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), postRaw: vi.fn(), put: vi.fn(), remove: vi.fn(), download: vi.fn() }));
+vi.mock("../api", () => ({ ApiError: class ApiError extends Error {}, api: { get, post, postRaw, put, delete: remove, download } }));
 
 afterEach(cleanup);
 
@@ -15,9 +15,11 @@ beforeEach(() => {
   get.mockReset().mockImplementation((url: string) => {
     if (url.includes("/api/integrations/hermes")) return Promise.resolve({ baseUrl: "", apiKeyConfigured: false, apiKeyHint: null, status: "unconfigured", message: "请配置", checkedAt: null, version: null });
     if (url.includes("/api/diagnostics")) return Promise.resolve({ status: "ok", generatedAt: "2026-08-24T00:00:00Z", database: { status: "ok", latencyMs: 2, migrationVersion: "head" }, scheduler: { enabled: true, running: true, jobCount: 2, lastQueuePollAt: null, lastQueuePollFailed: false, lastSweepAt: null, lastSweepLostCount: 0 }, queue: { queued: 0, running: 0, oldestActiveSeconds: null, lastSuccessAt: null, lastFailureAt: null }, hermes: { configured: false, status: "unconfigured", checkedAt: null }, mcp: { status: "unverified", lastWriteAt: null, lastTaskStatus: null, lastTaskAt: null } });
+    if (url.includes("/api/import/batches")) return Promise.resolve({ items: [] });
     return Promise.resolve([]);
   });
   post.mockReset().mockResolvedValue({});
+  postRaw.mockReset().mockResolvedValue({});
   put.mockReset().mockResolvedValue({});
   remove.mockReset().mockResolvedValue(undefined);
   download.mockReset().mockResolvedValue({ blob: new Blob(), filename: "export.json" });
@@ -239,17 +241,20 @@ it("用独立视图切换订阅管理和Hermes运行设置", async () => {
   expect(await screen.findByText("Agent论文周报")).toBeVisible();
 });
 
-it("数据导出使用独立设置视图", async () => {
-  get.mockImplementation((url: string) => url.includes("/api/topics")
-    ? Promise.resolve({ items: [], total: 0, limit: 100, offset: 0 })
-    : Promise.resolve([]));
+it("数据迁移使用独立设置视图", async () => {
+  get.mockImplementation((url: string) => {
+    if (url.includes("/api/topics")) return Promise.resolve({ items: [], total: 0, limit: 100, offset: 0 });
+    if (url.includes("/api/import/batches")) return Promise.resolve({ items: [] });
+    return Promise.resolve([]);
+  });
   render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
       <Subscriptions />
     </QueryClientProvider>,
   );
-  await userEvent.click(screen.getByRole("link", { name: "数据导出" }));
+  await userEvent.click(screen.getByRole("link", { name: "数据迁移" }));
   expect(window.location.search).toBe("?view=data");
+  expect(screen.getByRole("heading", { name: "导入内容" })).toBeVisible();
   expect(screen.getByRole("heading", { name: "数据导出" })).toBeVisible();
   expect(screen.queryByRole("button", { name: "新建订阅" })).not.toBeInTheDocument();
 });

@@ -6,6 +6,7 @@ import { Link, useSearchParams } from "wouter";
 import { api } from "../api";
 import { EmptyState } from "../components/EmptyState";
 import { DataExport } from "../components/DataExport";
+import { DataImportMigration } from "../components/DataImportMigration";
 import { HermesConnection } from "../components/HermesConnection";
 import { HermesPreferences } from "../components/HermesPreferences";
 import { SubscriptionHealth } from "../components/SubscriptionHealth";
@@ -167,7 +168,7 @@ export function Subscriptions() {
         <nav className="segmented settings-view-tabs" aria-label="设置内容">
           <Link href="/settings" className={view === "subscriptions" ? "active" : ""} aria-current={view === "subscriptions" ? "page" : undefined}>订阅</Link>
           <Link href="/settings?view=runtime" className={view === "runtime" ? "active" : ""} aria-current={view === "runtime" ? "page" : undefined}>Hermes与运行</Link>
-          <Link href="/settings?view=data" className={view === "data" ? "active" : ""} aria-current={view === "data" ? "page" : undefined}>数据导出</Link>
+          <Link href="/settings?view=data" className={view === "data" ? "active" : ""} aria-current={view === "data" ? "page" : undefined}>数据迁移</Link>
         </nav>
         <div className="settings-toolbar">
           <Link className="secondary-link" href="/tasks"><History size={17} />任务收件箱</Link>
@@ -207,7 +208,7 @@ export function Subscriptions() {
         <HermesPreferences />
         <SubscriptionHealth />
       </section>}
-      {view === "data" && <DataExport />}
+      {view === "data" && <div className="data-migration-grid"><DataImportMigration /><DataExport /></div>}
       {dialogOpen && <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && closeDialog()}>
         <section ref={dialogRef} className="dialog-panel" role="dialog" aria-modal="true" aria-labelledby="subscription-dialog-title" aria-describedby={confirmingDelete ? "subscription-delete-description" : undefined}>
           <div className="dialog-heading">

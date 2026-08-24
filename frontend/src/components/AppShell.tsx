@@ -101,7 +101,7 @@ export function AppShell() {
   const [searchParams] = useSearchParams();
   const pathname = location.split(/[?#]/, 1)[0];
   const settingsView = pathname === "/settings" ? searchParams.get("view") : null;
-  const title = settingsView === "runtime" ? "Hermes与运行" : settingsView === "data" ? "数据导出" : pageName(pathname);
+  const title = settingsView === "runtime" ? "Hermes与运行" : settingsView === "data" ? "数据迁移" : pageName(pathname);
   const isDetailPage = pathname.startsWith("/items/") || pathname.startsWith("/reports/") || pathname.startsWith("/traces/") || pathname.startsWith("/tasks/") || pathname.startsWith("/topics/");
   const hidesBottomNav = isDetailPage;
   const backHref = isDetailPage ? detailBack(pathname) : null;

@@ -20,7 +20,7 @@ from app.models import (
     Topic,
 )
 from app.ops.content_export import validate_export
-from app.services.data_export import DataExportService, ExportFilters, safe_url
+from app.services.data_export import DataExportService, ExportFilters, clean_text, safe_url
 
 
 def seed_export_graph(db: Session, subscription: Subscription, item: IntelligenceItem) -> Topic:
@@ -98,6 +98,12 @@ def test_json_export_preserves_graph_and_removes_sensitive_data(
     payload = response.json()
     assert payload["schemaVersion"] == 1
     assert payload["counts"]["items"] == 1
+    assert payload["data"]["subscriptionRefs"] == [{
+        "id": subscription.id,
+        "name": subscription.name,
+        "kind": subscription.kind,
+    }]
+    assert payload["data"]["items"][0]["fingerprint"] == seeded_item.fingerprint
     assert payload["data"]["reportSources"] == [{
         "reportId": payload["data"]["reports"][0]["id"],
         "publicationId": payload["data"]["publications"][0]["id"],
@@ -105,6 +111,10 @@ def test_json_export_preserves_graph_and_removes_sensitive_data(
         "ordinal": 1,
         "wasInserted": True,
         "title": seeded_item.title,
+        "summary": clean_text(seeded_item.summary),
+        "kind": seeded_item.kind,
+        "publishedAt": None,
+        "fingerprint": seeded_item.fingerprint,
         "source": seeded_item.source,
         "originalUrl": "https://example.com/story?ref=weekly",
     }]

@@ -65,6 +65,52 @@ test("Hermes暂时离线时首页保持内容优先", async ({ page }, testInfo)
   await capture(page, testInfo, "home-hermes-offline");
 });
 
+test("数据迁移在四档视口保持清晰并先预览后写入", async ({ page }, testInfo) => {
+  if (testInfo.project.name === "mobile") await page.setViewportSize({ width: 320, height: 740 });
+  await page.route("**/api/import/batches**", (route) => route.fulfill({ json: { items: [] } }));
+  await page.route("**/api/import/preview", (route) => route.fulfill({
+    json: {
+      payloadHash: "a".repeat(64), previewToken: "preview-token", expiresAt: "2026-08-24T12:30:00Z",
+      totalRecords: 14, canImport: true, warnings: ["任务历史2条不会导入。"], unsupported: { tasks: 2 },
+      summary: {
+        subscriptions: { create: 1, reuse: 0, conflict: 0, skip: 0 },
+        items: { create: 6, reuse: 2, conflict: 0, skip: 0 },
+        topics: { create: 1, reuse: 1, conflict: 0, skip: 0 },
+        preferences: { create: 1, reuse: 0, conflict: 0, skip: 0 },
+        reports: { create: 1, reuse: 0, conflict: 0, skip: 0 },
+        relations: { create: 1, reuse: 0, conflict: 0, skip: 0 },
+      },
+    },
+  }));
+
+  await page.goto("/settings?view=data");
+  await page.getByLabel("选择知流JSON文件").setInputFiles({
+    name: "zhiliu-export.json", mimeType: "application/json",
+    buffer: Buffer.from('{"schemaVersion":1,"data":{},"counts":{}}'),
+  });
+  await page.getByRole("button", { name: "预览导入内容" }).click();
+  await expect(page.getByText("文件结构有效")).toBeVisible();
+  await expect(page.getByRole("button", { name: "确认导入" })).toBeVisible();
+  await assertNoOverflow(page);
+
+  const columns = await page.locator(".data-migration-grid").evaluate((element) =>
+    getComputedStyle(element).gridTemplateColumns.split(" ").length,
+  );
+  expect(columns).toBe(testInfo.project.name === "desktop" ? 2 : 1);
+  const bottomNav = page.locator(".bottom-nav");
+  if (await bottomNav.isVisible()) {
+    for (const actionName of ["确认导入", "生成导出文件"]) {
+      const action = page.getByRole("button", { name: actionName });
+      await action.evaluate((element) => element.scrollIntoView({ block: "center" }));
+      const [actionBox, navBox] = await Promise.all([action.boundingBox(), bottomNav.boundingBox()]);
+      expect(actionBox).not.toBeNull();
+      expect(navBox).not.toBeNull();
+      expect(actionBox!.y + actionBox!.height, `${actionName}被底部导航遮挡`).toBeLessThanOrEqual(navBox!.y);
+    }
+  }
+  await capture(page, testInfo, "data-migration-preview");
+});
+
 test("阅读情报并触发订阅", async ({ page }, testInfo) => {
   if (testInfo.project.name === "mobile") await page.setViewportSize({ width: 320, height: 740 });
   await page.goto("/");
@@ -192,9 +238,9 @@ test("阅读情报并触发订阅", async ({ page }, testInfo) => {
   await expect(page.getByRole("heading", { name: "Hermes连接" })).toBeVisible();
   await expect(page.getByRole("button", { name: "测试连接" })).toBeVisible();
   await capture(page, testInfo, "runtime-settings");
-  await page.getByRole("link", { name: "数据导出" }).click();
+  await page.getByRole("link", { name: "数据迁移" }).click();
   await expect(page).toHaveURL(/\/settings\?view=data$/);
-  await expect(page.getByRole("heading", { name: "数据导出", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "数据迁移", level: 1 })).toBeVisible();
   await expect(page.getByText("不包含密钥、完整微信消息和内部地址")).toBeVisible();
   await capture(page, testInfo, "data-export");
   const exportDownload = page.waitForEvent("download");

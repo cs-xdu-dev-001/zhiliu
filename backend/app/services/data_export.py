@@ -190,6 +190,7 @@ class DataExportService:
                 "keywords": [clean_text(str(value), limit=120) for value in json_value(item.keywords_json, []) if isinstance(value, str)],
                 "reason": clean_text(item.reason),
                 "importance": item.importance,
+                "fingerprint": item.fingerprint,
                 "isRead": item.is_read,
                 "isSaved": item.is_saved,
                 "isIgnored": item.is_ignored,
@@ -289,6 +290,10 @@ class DataExportService:
                 PublicationItem.ordinal,
                 PublicationItem.was_inserted,
                 IntelligenceItem.title,
+                IntelligenceItem.summary,
+                IntelligenceItem.kind,
+                IntelligenceItem.published_at,
+                IntelligenceItem.fingerprint,
                 IntelligenceItem.source,
                 IntelligenceItem.url,
             )
@@ -297,7 +302,7 @@ class DataExportService:
             .where(HermesPublication.briefing_id.in_(self._briefing_ids()))
             .order_by(HermesPublication.briefing_id, PublicationItem.ordinal)
         )
-        for briefing_id, publication_id, item_id, ordinal, was_inserted, title, source, url in self.db.execute(
+        for briefing_id, publication_id, item_id, ordinal, was_inserted, title, summary, kind, published_at, fingerprint, source, url in self.db.execute(
             statement.execution_options(yield_per=500)
         ):
             yield {
@@ -307,8 +312,37 @@ class DataExportService:
                 "ordinal": ordinal,
                 "wasInserted": was_inserted,
                 "title": clean_text(title),
+                "summary": clean_text(summary),
+                "kind": kind,
+                "publishedAt": iso(published_at),
+                "fingerprint": fingerprint,
                 "source": clean_text(source),
                 "originalUrl": safe_url(url),
+            }
+
+    def _subscription_refs(self) -> Iterator[dict]:
+        selected = set(self.filters.sections)
+        conditions = []
+        if "items" in selected:
+            conditions.append(Subscription.id.in_(
+                select(IntelligenceItem.subscription_id).where(IntelligenceItem.id.in_(self._item_ids()))
+            ))
+        if "reports" in selected:
+            conditions.append(Subscription.id.in_(
+                select(Briefing.subscription_id).where(Briefing.id.in_(self._briefing_ids()))
+            ))
+        if "tasks" in selected:
+            conditions.append(Subscription.id.in_(
+                select(TaskRun.subscription_id).where(TaskRun.id.in_(self._task_ids()))
+            ))
+        if not conditions:
+            return
+        statement = select(Subscription).where(or_(*conditions)).order_by(Subscription.id)
+        for subscription in self.db.scalars(statement.execution_options(yield_per=100)):
+            yield {
+                "id": subscription.id,
+                "name": clean_text(subscription.name, limit=120),
+                "kind": subscription.kind,
             }
 
     def _preferences(self) -> Iterator[dict]:
@@ -386,6 +420,8 @@ class DataExportService:
     def _datasets(self) -> list[tuple[str, Callable[[], Iterator[dict]]]]:
         datasets: list[tuple[str, Callable[[], Iterator[dict]]]] = []
         selected = set(self.filters.sections)
+        if selected & {"items", "reports", "tasks"}:
+            datasets.append(("subscriptionRefs", self._subscription_refs))
         if "items" in selected:
             datasets.append(("items", self._items))
         if "reports" in selected:

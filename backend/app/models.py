@@ -441,6 +441,47 @@ class ItemBulkOperation(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 
+class ImportBatch(Base):
+    __tablename__ = "import_batches"
+    __table_args__ = (
+        Index(
+            "uq_import_batches_active_key",
+            "import_key",
+            unique=True,
+            sqlite_where=text("status = 'committed'"),
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    import_key: Mapped[str] = mapped_column(String(64), index=True)
+    payload_hash: Mapped[str] = mapped_column(String(64), index=True)
+    schema_version: Mapped[int] = mapped_column(Integer)
+    report_conflict: Mapped[str] = mapped_column(String(30), default="keep")
+    status: Mapped[str] = mapped_column(String(20), default="committed", index=True)
+    counts_json: Mapped[str] = mapped_column(Text, default="{}")
+    summary_json: Mapped[str] = mapped_column(Text, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    undone_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ImportBatchRecord(Base):
+    __tablename__ = "import_batch_records"
+    __table_args__ = (
+        UniqueConstraint("batch_id", "entity_type", "target_key", name="uq_import_batch_record_target"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    batch_id: Mapped[int] = mapped_column(
+        ForeignKey("import_batches.id", ondelete="CASCADE"),
+        index=True,
+    )
+    entity_type: Mapped[str] = mapped_column(String(40), index=True)
+    target_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    target_key: Mapped[str] = mapped_column(String(240))
+    after_hash: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
 class HermesQualityDecision(Base):
     __tablename__ = "hermes_quality_decisions"
 
