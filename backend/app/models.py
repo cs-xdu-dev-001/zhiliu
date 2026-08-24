@@ -96,6 +96,10 @@ class IntelligenceItem(Base):
         cascade="all, delete-orphan",
         order_by="ItemTag.name",
     )
+    topic_links: Mapped[list["ItemTopic"]] = relationship(
+        back_populates="item",
+        cascade="all, delete-orphan",
+    )
 
 
 class ItemTag(Base):
@@ -110,6 +114,53 @@ class ItemTag(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     item: Mapped[IntelligenceItem] = relationship(back_populates="tags")
+
+
+class Topic(Base):
+    __tablename__ = "topics"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(120))
+    normalized_name: Mapped[str] = mapped_column(String(160), unique=True, index=True)
+    description: Mapped[str] = mapped_column(Text, default="")
+    is_followed: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    is_pinned: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    is_muted: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    merged_into_id: Mapped[int | None] = mapped_column(ForeignKey("topics.id"), nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+    aliases: Mapped[list["TopicAlias"]] = relationship(back_populates="topic", cascade="all, delete-orphan")
+    item_links: Mapped[list["ItemTopic"]] = relationship(back_populates="topic", cascade="all, delete-orphan")
+    merged_into: Mapped["Topic | None"] = relationship(remote_side="Topic.id", foreign_keys=[merged_into_id])
+
+
+class TopicAlias(Base):
+    __tablename__ = "topic_aliases"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    topic_id: Mapped[int] = mapped_column(ForeignKey("topics.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    normalized_name: Mapped[str] = mapped_column(String(160), unique=True, index=True)
+    source: Mapped[str] = mapped_column(String(30), default="keyword")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+    topic: Mapped[Topic] = relationship(back_populates="aliases")
+
+
+class ItemTopic(Base):
+    __tablename__ = "item_topics"
+    __table_args__ = (UniqueConstraint("item_id", "topic_id", name="uq_item_topics_item_topic"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    item_id: Mapped[int] = mapped_column(ForeignKey("intelligence_items.id", ondelete="CASCADE"), index=True)
+    topic_id: Mapped[int] = mapped_column(ForeignKey("topics.id", ondelete="CASCADE"), index=True)
+    source: Mapped[str] = mapped_column(String(30), default="keyword")
+    confidence: Mapped[float] = mapped_column(Float, default=1.0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+    item: Mapped[IntelligenceItem] = relationship(back_populates="topic_links")
+    topic: Mapped[Topic] = relationship(back_populates="item_links")
 
 
 class ItemRevision(Base):

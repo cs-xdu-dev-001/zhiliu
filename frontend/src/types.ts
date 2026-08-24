@@ -20,6 +20,7 @@ export interface IntelligenceItem {
   source: string;
   publishedAt: string | null;
   keywords: string[];
+  topics?: TopicReference[];
   reason: string;
   importance: number;
   isRead: boolean;
@@ -374,6 +375,38 @@ export interface SearchResponse {
   briefings: SearchBriefingResult[];
   itemTotal: number;
   briefingTotal: number;
+}
+
+export interface TopicReference {
+  id: number;
+  name: string;
+}
+
+export interface TopicSummary extends TopicReference {
+  description: string;
+  isFollowed: boolean;
+  isPinned: boolean;
+  isMuted: boolean;
+  itemCount7Days: number;
+  itemCount30Days: number;
+  previous7DaysCount: number;
+  trend: "rising" | "steady" | "falling";
+  sourceCount: number;
+  latestAt: string | null;
+}
+
+export interface TopicPage {
+  items: TopicSummary[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface TopicDetail extends TopicSummary {
+  aliases: string[];
+  latestItems: IntelligenceItem[];
+  relatedBriefings: Briefing[];
+  relatedRuns: TaskRun[];
 }
 
 export type PreferenceScope = "source" | "topic" | "output";

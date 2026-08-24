@@ -1,4 +1,4 @@
-import { ArrowLeft, BookOpenText, CircleCheck, House, Inbox, ListFilter, Radio, Search, Settings2 } from "lucide-react";
+import { ArrowLeft, BookOpenText, CircleCheck, House, Inbox, ListFilter, Radio, Search, Settings2, Tags } from "lucide-react";
 import { Component, lazy, Suspense, useEffect, useRef, type ReactNode } from "react";
 import { Link, Route, Switch, useLocation, useSearchParams } from "wouter";
 import { Home } from "../pages/Home";
@@ -32,6 +32,8 @@ const Subscriptions = lazy(async () => ({ default: (await loadRoute(() => import
 const Tasks = lazy(async () => ({ default: (await loadRoute(() => import("../pages/Tasks"))).Tasks }));
 const TaskDetail = lazy(async () => ({ default: (await loadRoute(() => import("../pages/TaskDetail"))).TaskDetail }));
 const TraceDetail = lazy(async () => ({ default: (await loadRoute(() => import("../pages/TraceDetail"))).TraceDetail }));
+const Topics = lazy(async () => ({ default: (await loadRoute(() => import("../pages/Topics"))).Topics }));
+const TopicDetailPage = lazy(async () => ({ default: (await loadRoute(() => import("../pages/TopicDetail"))).TopicDetailPage }));
 
 class RouteErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
   state = { failed: false };
@@ -56,6 +58,7 @@ const pageNames: Record<string, string> = {
   "/tasks": "任务收件箱",
   "/search": "搜索知流",
   "/quality": "内容质量",
+  "/topics": "主题信号",
 };
 
 const desktopNav = [
@@ -63,6 +66,7 @@ const desktopNav = [
   { to: "/feed", label: "情报", icon: ListFilter },
   { to: "/reports", label: "报告", icon: BookOpenText },
   { to: "/tasks", label: "收件箱", icon: Inbox },
+  { to: "/topics", label: "主题", icon: Tags },
   { to: "/quality", label: "质量", icon: CircleCheck },
   { to: "/settings", label: "设置", icon: Settings2 },
 ];
@@ -72,6 +76,7 @@ function pageName(location: string) {
   if (location.startsWith("/reports/")) return "报告详情";
   if (location.startsWith("/traces/")) return "处理链路";
   if (location.startsWith("/tasks/")) return "任务详情";
+  if (location.startsWith("/topics/")) return "主题详情";
   return pageNames[location] ?? "今日情报";
 }
 
@@ -97,7 +102,7 @@ export function AppShell() {
   const pathname = location.split(/[?#]/, 1)[0];
   const settingsView = pathname === "/settings" ? searchParams.get("view") : null;
   const title = settingsView === "runtime" ? "Hermes与运行" : pageName(pathname);
-  const isDetailPage = pathname.startsWith("/items/") || pathname.startsWith("/reports/") || pathname.startsWith("/traces/") || pathname.startsWith("/tasks/");
+  const isDetailPage = pathname.startsWith("/items/") || pathname.startsWith("/reports/") || pathname.startsWith("/traces/") || pathname.startsWith("/tasks/") || pathname.startsWith("/topics/");
   const hidesBottomNav = isDetailPage;
   const backHref = isDetailPage ? detailBack(pathname) : null;
   const previousTitle = useRef(title);
@@ -140,8 +145,10 @@ export function AppShell() {
                 <Route path="/reports/:id" component={BriefingDetail} />
                 <Route path="/traces/:id" component={TraceDetail} />
                 <Route path="/tasks/:id" component={TaskDetail} />
+                <Route path="/topics/:id" component={TopicDetailPage} />
                 <Route path="/feed" component={Feed} />
                 <Route path="/reports" component={Reports} />
+                <Route path="/topics" component={Topics} />
                 <Route path="/search" component={SearchPage} />
                 <Route path="/quality" component={Quality} />
                 <Route path="/settings" component={Subscriptions} />

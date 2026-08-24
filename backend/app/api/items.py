@@ -7,7 +7,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.db import get_db
 from app.api.runs import serialize_task_run
@@ -18,6 +18,7 @@ from app.models import (
     ItemBulkOperation,
     ItemRevision,
     ItemTag,
+    ItemTopic,
     PublicationItem,
     Subscription,
     TaskRun,
@@ -42,6 +43,7 @@ from app.schemas import (
     MergedItemResponse,
     MergeResultResponse,
     PublicationRecordResponse,
+    TopicReference,
 )
 from app.services.run_service import item_fingerprint
 from app.services.item_maintenance import add_revision, item_snapshot
@@ -73,6 +75,7 @@ def serialize_item(record: IntelligenceItem) -> IntelligenceItemResponse:
         source=record.source,
         published_at=record.published_at,
         keywords=json.loads(record.keywords_json),
+        topics=[TopicReference(id=link.topic.id, name=link.topic.name) for link in record.topic_links if link.topic.merged_into_id is None],
         reason=record.reason,
         importance=record.importance,
         is_read=record.is_read,
@@ -157,14 +160,14 @@ def list_items(
         "oldest": (event_time.asc(), IntelligenceItem.id.asc()),
         "title": (func.lower(IntelligenceItem.title).asc(), IntelligenceItem.id.asc()),
     }[sort]
-    records = db.scalars(
+    records = db.execute(
         select(IntelligenceItem)
-        .options(selectinload(IntelligenceItem.tags))
+        .options(selectinload(IntelligenceItem.tags), joinedload(IntelligenceItem.topic_links).joinedload(ItemTopic.topic))
         .where(*filters)
         .order_by(*order_by)
         .limit(limit)
         .offset(offset)
-    ).all()
+    ).unique().scalars().all()
     return ItemPage(items=[serialize_item(record) for record in records], total=total, limit=limit, offset=offset)
 
 

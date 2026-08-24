@@ -6,6 +6,7 @@ from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models import HermesPublication, HermesQualityDecision, IntelligenceItem, PublicationItem
+from app.services.topics import link_item_topics
 
 LOW_IMPORTANCE_THRESHOLD = 0.4
 STALE_DAYS = {"news": 30, "job": 45}
@@ -116,6 +117,7 @@ def restore_quality_decision(db: Session, decision_id: int) -> HermesQualityDeci
         )
         db.add(existing)
         db.flush()
+        link_item_topics(db, existing)
         was_inserted = True
     else:
         was_inserted = False

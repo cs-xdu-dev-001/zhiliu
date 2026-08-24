@@ -154,6 +154,7 @@ class IntelligenceItemResponse(ApiModel):
     source: str
     published_at: datetime | None
     keywords: list[str]
+    topics: list["TopicReference"] = Field(default_factory=list)
     reason: str
     importance: float
     is_read: bool
@@ -409,12 +410,56 @@ class SearchBriefingResult(ApiModel):
     created_at: datetime
 
 
+class TopicReference(ApiModel):
+    id: int
+    name: str
+
+
+class TopicSummary(TopicReference):
+    description: str
+    is_followed: bool
+    is_pinned: bool
+    is_muted: bool
+    item_count_7_days: int
+    item_count_30_days: int
+    previous_7_days_count: int
+    trend: Literal["rising", "steady", "falling"]
+    source_count: int
+    latest_at: datetime | None
+
+
+class TopicPage(ApiModel):
+    items: list[TopicSummary]
+    total: int
+    limit: int
+    offset: int
+
+
+class TopicStateUpdate(ApiModel):
+    is_followed: bool | None = None
+    is_pinned: bool | None = None
+    is_muted: bool | None = None
+
+
+class TopicMergeRequest(ApiModel):
+    target_id: int = Field(gt=0)
+
+
+class TopicDetail(TopicSummary):
+    aliases: list[str]
+    latest_items: list[IntelligenceItemResponse]
+    related_briefings: list[BriefingResponse]
+    related_runs: list["TaskRunResponse"]
+
+
 class SearchResponse(ApiModel):
     query: str
     items: list[SearchItemResult]
     briefings: list[SearchBriefingResult]
     item_total: int
     briefing_total: int
+    topics: list[TopicSummary] = Field(default_factory=list)
+    topic_total: int = 0
 
 
 PreferenceScope = Literal["source", "topic", "output"]
@@ -542,4 +587,6 @@ class QualityPage(ApiModel):
 
 
 DashboardResponse.model_rebuild()
+IntelligenceItemResponse.model_rebuild()
+TopicDetail.model_rebuild()
 

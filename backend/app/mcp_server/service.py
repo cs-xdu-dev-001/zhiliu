@@ -27,6 +27,7 @@ from app.models import (
 from app.services.run_service import canonical_item, item_fingerprint, normalize_url
 from app.services.preferences import PreferenceService
 from app.services.quality import record_quality_decisions
+from app.services.topics import link_item_topics
 
 
 AUTO_CATEGORIES = {
@@ -419,6 +420,7 @@ class PublicationService:
             )
             self.db.add(record)
             self.db.flush()
+            link_item_topics(self.db, record)
             resolved.append((record, True))
             seen_item_ids.add(record.id)
         return resolved

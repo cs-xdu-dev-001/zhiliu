@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.models import Briefing, HermesPublication, IntelligenceItem, PublicationItem, TaskRun
 from app.services.hermes import HermesClient, HermesTimeout, HermesUnavailable
 from app.services.quality import record_quality_decisions
+from app.services.topics import link_item_topics
 
 
 def normalize_url(value: str) -> str:
@@ -107,6 +108,7 @@ class RunService:
                 )
                 self.db.add(record)
                 self.db.flush()
+                link_item_topics(self.db, record)
                 resolved_items.append((record, True))
                 seen_item_ids.add(record.id)
 

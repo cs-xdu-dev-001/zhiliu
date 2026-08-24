@@ -19,12 +19,14 @@ from app.api.subscription_health import router as subscription_health_router
 from app.api.saved_views import router as saved_views_router
 from app.api.diagnostics import router as diagnostics_router
 from app.db import SessionLocal, get_db
+from app.api.topics import router as topics_router
 from app.core.config import get_settings
 from app.core.config import Settings
 from app.mcp_server.server import SessionFactory, build_mcp_asgi
 from app.middleware import SafeRequestLogMiddleware
 from app.seed import seed_database
 from app.services.scheduler import start_scheduler, stop_scheduler
+from app.services.topics import reconcile_topics
 
 
 def create_app(
@@ -52,6 +54,7 @@ def create_app(
                 db,
                 demo_mode=runtime_settings.demo_mode,
             )
+            reconcile_topics(db)
         async with mcp_server.session_manager.run():
             if should_start_scheduler:
                 start_scheduler()
@@ -74,6 +77,7 @@ def create_app(
     application.include_router(subscription_health_router)
     application.include_router(saved_views_router)
     application.include_router(diagnostics_router)
+    application.include_router(topics_router)
 
     @application.get("/api/health")
     def health(db: Session = Depends(get_db)) -> dict[str, str]:

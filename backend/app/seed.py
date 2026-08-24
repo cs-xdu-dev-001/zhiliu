@@ -14,6 +14,7 @@ from app.models import (
     TaskRun,
 )
 from app.services.run_service import item_fingerprint
+from app.services.topics import reconcile_topics
 
 
 def seed_database(
@@ -175,4 +176,5 @@ def seed_database(
         for item in source_items
     )
     db.commit()
+    reconcile_topics(db)
 

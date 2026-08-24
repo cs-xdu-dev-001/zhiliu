@@ -233,7 +233,7 @@ export function ItemDetail() {
           <h3 id="reason-heading">值得关注</h3>
           <p>{item.reason || "暂无补充判断"}</p>
         </section>
-        <div className="keyword-row">{item.tags.map((tag) => <span className="item-tag" key={tag}>{tag}</span>)}{item.keywords.map((keyword) => <span key={keyword}>{keyword}</span>)}</div>
+        <div className="keyword-row">{item.topics?.map((topic) => <Link key={topic.id} href={`/topics/${topic.id}`}>{topic.name}</Link>)}{item.tags.map((tag) => <span className="item-tag" key={tag}>{tag}</span>)}</div>
       </div>
 
       <section className="maintenance-section" aria-labelledby="maintenance-heading">
