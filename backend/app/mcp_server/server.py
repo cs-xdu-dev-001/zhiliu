@@ -254,8 +254,9 @@ def build_mcp_server(
         kind: IntelligenceKind | None = None,
         priority: FeedbackPriority | None = None,
         ignored: bool | None = None,
+        sourceUnavailable: bool | None = None,
     ) -> ItemFeedbackReceipt:
-        """仅在已知具体情报ID时根据用户反馈修订内容、优先级或忽略状态。"""
+        """仅在已知具体情报ID时根据用户反馈修订内容、优先级、忽略或原文失效状态。"""
         payload = ItemFeedbackPayload(
             itemId=itemId,
             title=title,
@@ -263,6 +264,7 @@ def build_mcp_server(
             kind=kind,
             priority=priority,
             ignored=ignored,
+            sourceUnavailable=sourceUnavailable,
         )
         with session_factory() as db:
             record = ItemMaintenanceService(db).apply_feedback(
@@ -272,12 +274,14 @@ def build_mcp_server(
                 kind=payload.kind,
                 priority=payload.priority,
                 ignored=payload.ignored,
+                source_unavailable=payload.source_unavailable,
             )
             return ItemFeedbackReceipt(
                 item_id=record.id,
                 title=record.title,
                 importance=record.importance,
                 ignored=record.is_ignored,
+                source_unavailable=record.source_unavailable,
                 message="情报已按反馈更新，修改记录已保留",
                 detail_url=(
                     f"{public_base_url.rstrip('/')}/items/{record.id}" if public_base_url else None

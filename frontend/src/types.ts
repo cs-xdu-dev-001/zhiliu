@@ -26,13 +26,15 @@ export interface IntelligenceItem {
   isSaved: boolean;
   isIgnored: boolean;
   isInvalid: boolean;
+  isStale?: boolean;
+  sourceUnavailable?: boolean;
   mergedIntoId: number | null;
   createdAt: string;
 }
 
 export interface ItemRevision {
   id: number;
-  action: "edited" | "invalidated" | "restored" | "merged" | "merge_target";
+  action: "edited" | "invalidated" | "restored" | "merged" | "merge_target" | "source_unavailable" | "source_restored";
   before: Record<string, unknown> | null;
   after: Record<string, unknown> | null;
   createdAt: string;
@@ -89,6 +91,12 @@ export interface Briefing {
   itemCount: number;
   periodStart: string | null;
   periodEnd: string | null;
+  seriesId?: string | null;
+  versionNumber?: number;
+  previousVersionId?: number | null;
+  generationTaskId?: number | null;
+  citationStatus?: "unchecked" | "valid" | "warning";
+  citationWarnings?: string[];
   createdAt: string;
 }
 
@@ -101,6 +109,7 @@ export interface SourceItem {
   ordinal: number;
   wasInserted: boolean;
   isInvalid: boolean;
+  sourceUnavailable?: boolean;
 }
 
 export type BulkItemAction = "read" | "unread" | "save" | "unsave" | "ignore" | "unignore" | "invalidate" | "restore";
@@ -125,6 +134,7 @@ export interface BriefingDetail extends Briefing {
   sourceItems: SourceItem[];
   publication: PublicationSummary | null;
   traceAvailable: boolean;
+  versions?: Briefing[];
 }
 
 export interface PublicationTrace {
@@ -168,9 +178,10 @@ export type SubscriptionInput = Omit<Subscription, "id" | "lastRunAt" | "nextRun
 export interface TaskRun {
   id: number;
   subscriptionId: number;
+  retryOfId: number | null;
   hermesRunId: string | null;
   traceId: string | null;
-  origin: "weixin-hermes" | "subscription-hermes";
+  origin: "weixin-hermes" | "subscription-hermes" | "web-report";
   topic: string | null;
   requestSummary: string | null;
   status: "queued" | "running" | "success" | "failed";
@@ -220,6 +231,9 @@ export interface QualityPage {
   filteredCount: number;
   duplicateCount: number;
   restoredCount: number;
+  staleCount: number;
+  lowImportanceCount: number;
+  sourceUnavailableCount: number;
 }
 
 export interface SubscriptionHealth {

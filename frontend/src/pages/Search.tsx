@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { Link, useSearchParams } from "wouter";
 
 import { api } from "../api";
+import { EmptyState } from "../components/EmptyState";
 import type { IntelligenceKind, SearchResponse } from "../types";
 
 const kindNames: Record<IntelligenceKind, string> = { news: "热点", paper: "论文", job: "招聘" };
@@ -69,7 +70,7 @@ export function SearchPage() {
       {queryText.length === 1 && <p className="inline-error">请至少输入2个字符。</p>}
       {queryText.length >= 2 && query.isPending && <div className="list-skeleton" aria-label="正在搜索"><i /><i /></div>}
       {query.isError && <div className="inline-error" role="alert">搜索失败。<button onClick={() => query.refetch()}>重新搜索</button></div>}
-      {query.data && total === 0 && <div className="empty-state"><FileSearch size={24} /><strong>没有找到“{query.data.query}”</strong><p>换个说法，或扩大时间范围再试。</p></div>}
+      {query.data && total === 0 && <EmptyState compact icon={<FileSearch size={20} />} title={`没有找到“${query.data.query}”，请换个说法或扩大时间范围`} />}
 
       {query.data && query.data.items.length > 0 && <section className="search-group">
         <h2>情报 <span>{query.data.itemTotal}</span></h2>

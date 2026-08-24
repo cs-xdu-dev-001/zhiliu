@@ -52,6 +52,7 @@ it("显示完整情报并返回来源列表", async () => {
   expect(screen.getByText("影响Agent开发工作流")).toBeVisible();
   expect(screen.getByRole("link", { name: "返回情报列表" })).toHaveAttribute("href", "/feed?state=unread");
   expect(screen.getByRole("link", { name: /打开原文/ })).toHaveAttribute("href", "https://example.com");
+  expect(screen.getByText("更多维护").closest("details")).not.toHaveAttribute("open");
 });
 
 it("可以在详情收藏", async () => {
@@ -61,13 +62,35 @@ it("可以在详情收藏", async () => {
   expect(patch).toHaveBeenCalledWith("/api/items/1", { isSaved: true });
 });
 
+it("在详情提示可能过期", async () => {
+  get.mockResolvedValue({ ...item, isStale: true });
+  renderPage();
+
+  expect(await screen.findByText("可能过期")).toBeVisible();
+});
+
+it("可以把当前来源记为Hermes长期偏好", async () => {
+  post.mockResolvedValue({
+    id: 9, scope: "source", effect: "avoid", value: "Example", kind: "news",
+    note: "从情报#1添加", active: true, createdAt: "2026-08-01T03:00:00Z", updatedAt: "2026-08-01T03:00:00Z",
+  });
+  renderPage();
+  await userEvent.click(await screen.findByText("更多维护"));
+  await userEvent.click(await screen.findByRole("button", { name: "少看此来源" }));
+
+  expect(post).toHaveBeenCalledWith("/api/preferences", {
+    scope: "source", effect: "avoid", value: "Example", kind: "news", note: "从情报#1添加",
+  });
+  expect(await screen.findByText("已记住：以后减少来自Example的热点")).toBeVisible();
+});
+
 it("展示Hermes写入记录和完整链路入口", async () => {
   renderPage();
 
   expect(await screen.findByRole("heading", { name: "写入记录" })).toBeVisible();
   expect(screen.getByText("整理Agent更新并放进知流")).toBeVisible();
   expect(screen.getByText("首次写入")).toBeVisible();
-  expect(screen.getByRole("link", { name: "查看完整链路" })).toHaveAttribute("href", "/traces/7");
+  expect(screen.getByRole("link", { name: "查看完整链路" })).toHaveAttribute("href", "/traces/7?from=%2Fitems%2F1");
   expect(screen.getByRole("link", { name: "Agent更新报告" })).toHaveAttribute("href", "/reports/3");
 });
 
@@ -90,8 +113,27 @@ it("可以编辑标题摘要和分类", async () => {
 it("可以标记无效", async () => {
   renderPage();
   await screen.findByText("完整摘要。");
+  await userEvent.click(screen.getByText("更多维护"));
   await userEvent.click(screen.getByRole("button", { name: "标记无效" }));
   expect(put).toHaveBeenCalledWith("/api/items/1/validity", { invalid: true });
+});
+
+it("可以标记并恢复失效原文", async () => {
+  put
+    .mockResolvedValueOnce({ ...item, sourceUnavailable: true })
+    .mockResolvedValueOnce({ ...item, sourceUnavailable: false });
+  get
+    .mockResolvedValueOnce(item)
+    .mockResolvedValueOnce({ ...item, sourceUnavailable: true })
+    .mockResolvedValueOnce({ ...item, sourceUnavailable: false });
+  renderPage();
+
+  await userEvent.click(await screen.findByText("更多维护"));
+  await userEvent.click(await screen.findByRole("button", { name: "标记原文失效" }));
+  expect(put).toHaveBeenCalledWith("/api/items/1/source-availability", { unavailable: true });
+  expect(await screen.findByText("已标记原文失效", { selector: ".action-notice" })).toBeVisible();
+  await userEvent.click(await screen.findByRole("button", { name: "恢复原文" }));
+  expect(put).toHaveBeenLastCalledWith("/api/items/1/source-availability", { unavailable: false });
 });
 
 it("可以选择候选情报并合并", async () => {
@@ -100,6 +142,7 @@ it("可以选择候选情报并合并", async () => {
     : Promise.resolve(item));
   renderPage();
   await screen.findByText("完整摘要。");
+  await userEvent.click(screen.getByText("更多维护"));
   await userEvent.click(screen.getByRole("button", { name: "合并重复" }));
   await userEvent.click(await screen.findByRole("radio", { name: /相似情报/ }));
   await userEvent.click(screen.getByRole("button", { name: "确认合并" }));
@@ -111,6 +154,26 @@ it("展示版本记录", async () => {
   const section = (await screen.findByRole("heading", { name: "修改记录" })).closest("section")!;
   expect(within(section).getByText("编辑内容")).toBeVisible();
   expect(within(section).getByText(/标题：旧标题 → Agent框架发布新版本/)).toBeVisible();
+});
+
+it("修改记录较多时默认只展示最近三条", async () => {
+  get.mockResolvedValue({
+    ...item,
+    revisions: [
+      { id: 14, action: "restored", before: {}, after: {}, createdAt: "2026-08-04T02:00:00Z" },
+      { id: 13, action: "invalidated", before: {}, after: {}, createdAt: "2026-08-03T02:00:00Z" },
+      { id: 12, action: "source_restored", before: {}, after: {}, createdAt: "2026-08-02T02:00:00Z" },
+      { id: 11, action: "edited", before: { title: "最早标题" }, after: { title: "旧标题" }, createdAt: "2026-08-01T02:00:00Z" },
+    ],
+  });
+  renderPage();
+
+  expect(await screen.findByText("恢复有效", { selector: ".revision-row strong" })).toBeVisible();
+  expect(screen.queryByText(/最早标题/)).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "查看全部4条" }));
+  expect(screen.getByText(/最早标题/)).toBeVisible();
+  await userEvent.click(screen.getByRole("button", { name: "收起记录" }));
+  expect(screen.queryByText(/最早标题/)).not.toBeInTheDocument();
 });
 
 it("微信来源提示回到微信重新发起", async () => {

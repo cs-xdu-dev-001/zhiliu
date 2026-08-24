@@ -8,7 +8,7 @@ const kindNames: Record<IntelligenceKind, string> = { news: "热点", paper: "�
 const formatDate = (value: string | null) => value ? new Date(value).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }) : "暂无";
 
 export function SubscriptionHealth() {
-  const query = useQuery({ queryKey: ["subscription-health"], queryFn: () => api.get<SubscriptionHealthPage>("/api/subscription-health"), refetchInterval: 15000 });
+  const query = useQuery({ queryKey: ["subscription-health"], queryFn: () => api.get<SubscriptionHealthPage>("/api/subscription-health"), refetchInterval: 60_000 });
   const items = query.data?.items ?? [];
   return <section className="health-section" aria-labelledby="health-title">
     <div className="health-heading"><div><h2 id="health-title">订阅健康</h2><p>近30天运行质量；网络或超时失败会自动重试2次。</p></div><Activity size={21} aria-hidden="true" /></div>

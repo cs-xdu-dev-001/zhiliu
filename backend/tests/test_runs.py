@@ -2,6 +2,8 @@ from datetime import UTC, datetime
 
 from fastapi.testclient import TestClient
 from sqlalchemy import event
+from sqlalchemy.exc import IntegrityError
+import pytest
 
 from app.models import TaskRun
 
@@ -20,6 +22,106 @@ def test_duplicate_active_run_is_rejected(client: TestClient, running_task) -> N
     response = client.post(f"/api/subscriptions/{running_task.subscription_id}/run")
 
     assert response.status_code == 409
+
+
+def test_failed_subscription_run_can_be_retried_idempotently(
+    client: TestClient,
+    db_session,
+    subscription,
+) -> None:
+    original = TaskRun(
+        subscription_id=subscription.id,
+        origin="subscription-hermes",
+        topic="Agent论文周报",
+        request_summary="检索过去一周Agent论文",
+        status="failed",
+        stage="failed",
+        error_message="Hermes暂时不可用",
+    )
+    db_session.add(original)
+    db_session.commit()
+
+    first = client.post(f"/api/runs/{original.id}/retry")
+    second = client.post(f"/api/runs/{original.id}/retry")
+    db_session.refresh(original)
+
+    assert first.status_code == 202
+    assert first.json()["retryOfId"] == original.id
+    assert first.json()["status"] == "queued"
+    assert first.json()["requestSummary"] == original.request_summary
+    assert second.status_code == 202
+    assert second.json()["id"] == first.json()["id"]
+    assert original.status == "failed"
+
+
+def test_database_rejects_two_active_retries_for_same_task(db_session, subscription) -> None:
+    original = TaskRun(subscription_id=subscription.id, status="failed", stage="failed")
+    db_session.add(original)
+    db_session.commit()
+    db_session.add(
+        TaskRun(
+            subscription_id=subscription.id,
+            retry_of_id=original.id,
+            status="queued",
+            stage="accepted",
+        )
+    )
+    db_session.commit()
+    db_session.add(
+        TaskRun(
+            subscription_id=subscription.id,
+            retry_of_id=original.id,
+            status="running",
+            stage="processing",
+        )
+    )
+
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+    db_session.rollback()
+
+
+def test_database_rejects_two_active_report_tasks_for_same_series(db_session, subscription) -> None:
+    db_session.add(
+        TaskRun(
+            subscription_id=subscription.id,
+            origin="web-report",
+            report_series_id="series-concurrent",
+            status="queued",
+            stage="accepted",
+        )
+    )
+    db_session.commit()
+    db_session.add(
+        TaskRun(
+            subscription_id=subscription.id,
+            origin="web-report",
+            report_series_id="series-concurrent",
+            status="running",
+            stage="processing",
+        )
+    )
+
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+    db_session.rollback()
+
+
+def test_retry_rejects_non_failed_and_weixin_tasks(client: TestClient, db_session, subscription) -> None:
+    completed = TaskRun(subscription_id=subscription.id, status="success", stage="completed")
+    weixin = TaskRun(
+        subscription_id=subscription.id,
+        origin="weixin-hermes",
+        status="failed",
+        stage="failed",
+    )
+    db_session.add_all([completed, weixin])
+    db_session.commit()
+
+    assert client.post(f"/api/runs/{completed.id}/retry").status_code == 409
+    response = client.post(f"/api/runs/{weixin.id}/retry")
+    assert response.status_code == 409
+    assert response.json()["detail"] == "微信任务请在微信中重新发送请求"
 
 
 def test_run_list_is_public(client: TestClient) -> None:

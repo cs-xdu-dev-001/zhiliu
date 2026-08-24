@@ -3,9 +3,10 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import HermesPublication, HermesQualityDecision
+from app.models import HermesPublication, HermesQualityDecision, IntelligenceItem
 from app.schemas import QualityDecisionResponse, QualityPage
 from app.services.quality import QualityNotFound, QualityRestoreConflict, restore_quality_decision
+from app.services.quality import LOW_IMPORTANCE_THRESHOLD, stale_item_condition
 
 router = APIRouter(prefix="/api/quality", tags=["quality"])
 
@@ -47,12 +48,16 @@ def list_quality(
         select(HermesQualityDecision).where(*filters).order_by(HermesQualityDecision.created_at.desc()).limit(limit)
     ).all()
     total = db.scalar(select(func.count()).select_from(HermesQualityDecision).where(*filters)) or 0
+    active_items = [IntelligenceItem.is_invalid.is_(False), IntelligenceItem.merged_into_id.is_(None)]
     return QualityPage(
         items=[serialize(item) for item in items],
         total=total,
         filtered_count=db.scalar(select(func.count()).select_from(HermesQualityDecision).where(HermesQualityDecision.action == "filtered", HermesQualityDecision.restored_at.is_(None))) or 0,
         duplicate_count=db.scalar(select(func.count()).select_from(HermesQualityDecision).where(HermesQualityDecision.action == "duplicate")) or 0,
         restored_count=db.scalar(select(func.count()).select_from(HermesQualityDecision).where(HermesQualityDecision.reason_code == "restored")) or 0,
+        stale_count=db.scalar(select(func.count()).select_from(IntelligenceItem).where(*active_items, stale_item_condition())) or 0,
+        low_importance_count=db.scalar(select(func.count()).select_from(IntelligenceItem).where(*active_items, IntelligenceItem.importance < LOW_IMPORTANCE_THRESHOLD)) or 0,
+        source_unavailable_count=db.scalar(select(func.count()).select_from(IntelligenceItem).where(*active_items, IntelligenceItem.source_unavailable.is_(True))) or 0,
     )
 
 

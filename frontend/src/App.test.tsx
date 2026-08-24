@@ -46,9 +46,27 @@ test("筛选参数不影响顶栏和页签标题", () => {
   expect(document.title).toBe("情报流 · 知流");
 });
 
+test("报告页使用涵盖微信整理和订阅产出的通用标题", () => {
+  renderApp("/reports");
+  expect(screen.getByRole("heading", { name: "报告" })).toBeVisible();
+  expect(document.title).toBe("报告 · 知流");
+});
+
+test("Hermes运行视图使用对应顶栏标题", () => {
+  renderApp("/settings?view=runtime");
+  expect(screen.getByRole("heading", { name: "Hermes与运行", level: 1 })).toBeVisible();
+  expect(document.title).toBe("Hermes与运行 · 知流");
+});
+
 test("详情页拒绝跨站返回地址", () => {
   renderApp("/reports/1?from=https%3A%2F%2Fevil.example");
   expect(screen.getByRole("link", { name: "返回上一列表" })).toHaveAttribute("href", "/reports");
+});
+
+test("处理链路顶栏返回发起追踪的内容详情", () => {
+  renderApp("/traces/7?from=%2Fitems%2F9");
+  expect(screen.getByRole("link", { name: "返回上一列表" })).toHaveAttribute("href", "/items/9");
+  expect(screen.queryByRole("link", { name: "返回内容详情" })).not.toBeInTheDocument();
 });
 
 test("提供键盘跳转正文入口", () => {

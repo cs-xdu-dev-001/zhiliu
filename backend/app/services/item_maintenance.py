@@ -23,6 +23,7 @@ def item_snapshot(record: IntelligenceItem) -> dict[str, object]:
         "importance": record.importance,
         "isIgnored": record.is_ignored,
         "isInvalid": record.is_invalid,
+        "sourceUnavailable": record.source_unavailable,
         "mergedIntoId": record.merged_into_id,
     }
 
@@ -57,6 +58,7 @@ class ItemMaintenanceService:
         kind: str | None = None,
         priority: str | None = None,
         ignored: bool | None = None,
+        source_unavailable: bool | None = None,
     ) -> IntelligenceItem:
         record = self.db.get(IntelligenceItem, item_id)
         if record is None:
@@ -93,6 +95,8 @@ class ItemMaintenanceService:
             record.importance = max(record.importance, 0.8)
         if ignored is not None:
             record.is_ignored = ignored
+        if source_unavailable is not None:
+            record.source_unavailable = source_unavailable
         after = item_snapshot(record)
         if before != after:
             add_revision(self.db, record, "hermes_feedback", before, after)

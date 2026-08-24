@@ -12,6 +12,7 @@ from app.services.hermes import HermesBriefing, HermesItem, HermesResult, Hermes
 from app.core.crypto import SecretDecryptionError
 from app.services.hermes_integration import HermesIntegrationService
 from app.services.run_service import RunService
+from app.services.report_service import ReportService
 
 _scheduler: AsyncIOScheduler | None = None
 
@@ -70,6 +71,18 @@ class DemoHermesClient:
             raw_output='{"mode":"demo"}',
         )
 
+    async def execute_report(self, _: str):
+        from app.services.hermes import HermesReport
+
+        now = datetime.now(timezone.utc)
+        return HermesReport(
+            run_id=f"demo-report-{int(now.timestamp())}",
+            title="所选情报专题报告",
+            kind=self.subscription.kind,
+            content="当前为演示模式。报告依据所选情报整理。[1]",
+            raw_output='{"mode":"demo-report"}',
+        )
+
 
 async def process_queued_tasks() -> None:
     with SessionLocal() as lookup_db:
@@ -99,7 +112,10 @@ async def process_queued_tasks() -> None:
                     db.rollback()
                     raise
                 continue
-            await RunService(db, client).execute_task(task.id)
+            if task.origin == "web-report":
+                await ReportService(db, client).execute_task(task.id)
+            else:
+                await RunService(db, client).execute_task(task.id)
 
 
 def refresh_subscription_jobs() -> None:

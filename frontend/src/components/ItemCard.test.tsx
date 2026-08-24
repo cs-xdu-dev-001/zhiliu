@@ -1,4 +1,5 @@
 import { cleanup, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
 
 import { ItemCard } from "./ItemCard";
@@ -58,10 +59,30 @@ it("快捷操作位于详情链接之外", () => {
   );
 });
 
+it("明确提示可能过期但仍允许进入详情", () => {
+  render(<ItemCard item={{ ...item, isStale: true }} />);
+
+  expect(screen.getByText("可能过期")).toBeVisible();
+  expect(screen.getByRole("link", { name: /Agent框架发布新版本/ })).toHaveAttribute("href", "/items/1");
+});
+
+it("快捷操作明确当前状态并支持取消忽略", async () => {
+  const onChange = vi.fn();
+  render(<ItemCard item={{ ...item, isIgnored: true }} onChange={onChange} />);
+
+  expect(screen.getByRole("button", { name: "标记未读" })).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByRole("button", { name: "取消忽略" })).toHaveAttribute("aria-pressed", "true");
+  await userEvent.click(screen.getByRole("button", { name: "取消忽略" }));
+  expect(onChange).toHaveBeenCalledWith({ isIgnored: false });
+});
+
 it("批量模式提供带标题的选择框", () => {
   render(<ItemCard item={item} selectable selected={false} onSelect={vi.fn()} />);
 
   expect(screen.getByRole("checkbox", { name: "选择Agent框架发布新版本" })).toBeVisible();
+  expect(screen.queryByText("查看详情")).not.toBeInTheDocument();
+  expect(screen.getByRole("link", { name: /Agent框架发布新版本/ })).toHaveAttribute("href", "/items/1");
+  expect(screen.getByRole("link", { name: "打开原文（新窗口）" })).toBeVisible();
 });
 
 it("拒绝不安全的原文链接", () => {
@@ -69,6 +90,15 @@ it("拒绝不安全的原文链接", () => {
 
   expect(screen.queryByRole("link", { name: "打开原文（新窗口）" })).not.toBeInTheDocument();
   expect(screen.getByLabelText("原文链接不可用")).toBeVisible();
+});
+
+it("原文失效时保留详情入口但停用外链", () => {
+  render(<ItemCard item={{ ...item, sourceUnavailable: true }} />);
+
+  expect(screen.getByText("原文失效")).toBeVisible();
+  expect(screen.getByLabelText("原文已标记失效")).toBeVisible();
+  expect(screen.queryByRole("link", { name: "打开原文（新窗口）" })).not.toBeInTheDocument();
+  expect(screen.getByRole("link", { name: /Agent框架发布新版本/ })).toBeVisible();
 });
 
 it("首页紧凑卡只保留判断所需信息", () => {

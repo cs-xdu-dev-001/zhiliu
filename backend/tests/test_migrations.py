@@ -48,10 +48,30 @@ def test_empty_database_is_upgraded_to_traceable_schema(tmp_path: Path) -> None:
     )
     assert "alembic_version" in inspector.get_table_names()
     task_columns = {column["name"] for column in inspector.get_columns("task_runs")}
-    assert {"trace_id", "origin", "topic", "request_summary", "stage", "result_summary"} <= task_columns
+    assert {
+        "trace_id", "origin", "topic", "request_summary", "stage", "result_summary",
+        "retry_of_id", "report_item_ids_json", "report_series_id", "report_version_number",
+    } <= task_columns
+    assert any(
+        foreign_key["referred_table"] == "task_runs"
+        and foreign_key["constrained_columns"] == ["retry_of_id"]
+        for foreign_key in inspector.get_foreign_keys("task_runs")
+    )
+    task_indexes = {index["name"]: index for index in inspector.get_indexes("task_runs")}
+    assert task_indexes["uq_task_runs_active_retry"]["unique"] == 1
+    assert task_indexes["uq_task_runs_active_report_series"]["unique"] == 1
     item_columns = {column["name"] for column in inspector.get_columns("intelligence_items")}
-    assert {"is_invalid", "merged_into_id"} <= item_columns
+    assert {"is_invalid", "merged_into_id", "source_unavailable"} <= item_columns
     assert "item_revisions" in inspector.get_table_names()
+    briefing_columns = {column["name"] for column in inspector.get_columns("briefings")}
+    assert {
+        "series_id", "version_number", "previous_version_id", "generation_task_id",
+        "citation_status", "citation_warnings_json",
+    } <= briefing_columns
+    assert any(
+        constraint["column_names"] == ["series_id", "version_number"]
+        for constraint in inspector.get_unique_constraints("briefings")
+    )
 
 
 def test_existing_database_keeps_data_during_upgrade(tmp_path: Path) -> None:

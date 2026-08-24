@@ -1,6 +1,6 @@
 import { ArrowLeft, BookOpenText, CircleCheck, House, ListFilter, Radio, Search, Settings2 } from "lucide-react";
 import { useEffect } from "react";
-import { Link, Route, Switch, useLocation } from "wouter";
+import { Link, Route, Switch, useLocation, useSearchParams } from "wouter";
 import { Feed } from "../pages/Feed";
 import { BriefingDetail } from "../pages/BriefingDetail";
 import { Home } from "../pages/Home";
@@ -18,7 +18,7 @@ import { ServiceStatus } from "./ServiceStatus";
 const pageNames: Record<string, string> = {
   "/": "今日情报",
   "/feed": "情报流",
-  "/reports": "定期报告",
+  "/reports": "报告",
   "/settings": "订阅与任务",
   "/tasks": "任务记录",
   "/search": "搜索知流",
@@ -59,8 +59,10 @@ function detailBack(location: string) {
 
 export function AppShell() {
   const [location] = useLocation();
+  const [searchParams] = useSearchParams();
   const pathname = location.split(/[?#]/, 1)[0];
-  const title = pageName(pathname);
+  const settingsView = pathname === "/settings" ? searchParams.get("view") : null;
+  const title = settingsView === "runtime" ? "Hermes与运行" : pageName(pathname);
   const isDetailPage = pathname.startsWith("/items/") || pathname.startsWith("/reports/") || pathname.startsWith("/traces/") || pathname.startsWith("/tasks/");
   const hidesBottomNav = isDetailPage || pathname === "/tasks";
   const backHref = isDetailPage ? detailBack(pathname) : null;

@@ -117,9 +117,11 @@ async def test_official_client_discovers_and_calls_zhiliu_tools(
                         arguments={
                             "itemId": search_items[0]["resultId"],
                             "priority": "higher",
+                            "sourceUnavailable": True,
                         },
                     )
                     assert updated.isError is False
+                    assert updated.structuredContent["sourceUnavailable"] is True
 
                     removed = await session.call_tool(
                         "zhiliu_remove_preference",
@@ -134,6 +136,7 @@ async def test_official_client_discovers_and_calls_zhiliu_tools(
         item for item in items_response.json()["items"] if item["title"] == "MCP联通"
     )
     assert published_item["source"] == "Example · 微信Hermes"
+    assert published_item["sourceUnavailable"] is True
 
     assert (
         db_session.scalar(

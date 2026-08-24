@@ -1,9 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Clock3, History, MoreHorizontal, Play, Plus, Search, X } from "lucide-react";
 import { FormEvent, useState } from "react";
-import { Link } from "wouter";
+import { Link, useSearchParams } from "wouter";
 
 import { api } from "../api";
+import { EmptyState } from "../components/EmptyState";
 import { HermesConnection } from "../components/HermesConnection";
 import { HermesPreferences } from "../components/HermesPreferences";
 import { SubscriptionHealth } from "../components/SubscriptionHealth";
@@ -41,6 +42,8 @@ function nextRunLabel(record: Subscription) {
 }
 
 export function Subscriptions() {
+  const [searchParams] = useSearchParams();
+  const view = searchParams.get("view") === "runtime" ? "runtime" : "subscriptions";
   const queryClient = useQueryClient();
   const query = useQuery({ queryKey: ["subscriptions"], queryFn: () => api.get<Subscription[]>("/api/subscriptions") });
   const [editing, setEditing] = useState<Subscription | null>(null);
@@ -139,28 +142,32 @@ export function Subscriptions() {
 
   return (
     <section className="stack-lg">
-      <HermesConnection />
-      <HermesPreferences />
-      <SubscriptionHealth />
-      <div className="settings-toolbar">
-        <Link className="secondary-link" href="/tasks"><History size={17} />任务记录</Link>
-        <button className="primary-compact" onClick={(event) => openNew(event.currentTarget)}><Plus size={17} />新建订阅</button>
+      <div className="settings-view-bar">
+        <nav className="segmented settings-view-tabs" aria-label="设置内容">
+          <Link href="/settings" className={view === "subscriptions" ? "active" : ""} aria-current={view === "subscriptions" ? "page" : undefined}>订阅</Link>
+          <Link href="/settings?view=runtime" className={view === "runtime" ? "active" : ""} aria-current={view === "runtime" ? "page" : undefined}>Hermes与运行</Link>
+        </nav>
+        <div className="settings-toolbar">
+          <Link className="secondary-link" href="/tasks"><History size={17} />任务记录</Link>
+          {view === "subscriptions" && <button className="primary-compact" onClick={(event) => openNew(event.currentTarget)}><Plus size={17} />新建订阅</button>}
+        </div>
       </div>
+      {view === "subscriptions" && <>
       {notice && <div className={`action-notice ${notice.tone}`} role={notice.tone === "error" ? "alert" : "status"}><span>{notice.text}</span>{notice.action && <Link href={notice.action.href}>{notice.action.label}</Link>}</div>}
       {query.isPending && <div className="list-skeleton"><i /><i /></div>}
       {query.isError && <div className="inline-error" role="alert">订阅加载失败。<button onClick={() => query.refetch()}>重新加载</button></div>}
       {query.data?.length === 0 && <div className="empty-state"><Clock3 size={24} /><p>还没有订阅</p><button className="text-button" onClick={(event) => openNew(event.currentTarget)}>创建第一个订阅</button></div>}
       {query.data && query.data.length > 0 && <>
         <div className="subscription-tools">
-          <label className="feed-search"><Search size={18} /><input type="search" aria-label="搜索订阅" placeholder="搜索名称、关键词或任务说明" value={search} onChange={(event) => setSearch(event.target.value)} />{search && <button aria-label="清除订阅搜索" onClick={() => setSearch("")}><X size={17} /></button>}</label>
-          <select aria-label="订阅状态" value={enabledFilter} onChange={(event) => setEnabledFilter(event.target.value as typeof enabledFilter)}><option value="all">全部状态</option><option value="enabled">执行中</option><option value="paused">已暂停</option></select>
+          <label className="feed-search"><Search size={18} /><input type="search" aria-label="搜索订阅" placeholder="搜索订阅" value={search} onChange={(event) => setSearch(event.target.value)} />{search && <button aria-label="清除订阅搜索" onClick={() => setSearch("")}><X size={17} /></button>}</label>
+          <select aria-label="订阅状态" value={enabledFilter} onChange={(event) => setEnabledFilter(event.target.value as typeof enabledFilter)}><option value="all">全部</option><option value="enabled">执行中</option><option value="paused">已暂停</option></select>
         </div>
         <div className="subscription-filter-row">
           <div className="segmented" aria-label="订阅类型">{kindFilters.map((kind) => <button key={kind.value} aria-pressed={kindFilter === kind.value} className={kindFilter === kind.value ? "active" : ""} onClick={() => setKindFilter(kind.value)}>{kind.label}</button>)}</div>
           <span>{filteredSubscriptions?.length ?? 0}个订阅</span>
         </div>
       </>}
-      {query.data && query.data.length > 0 && filteredSubscriptions?.length === 0 && <div className="empty-state"><p>没有符合条件的订阅</p><button className="text-button" onClick={clearFilters}>清除筛选</button></div>}
+      {query.data && query.data.length > 0 && filteredSubscriptions?.length === 0 && <EmptyState compact title="没有符合条件的订阅" action={<button className="text-button" onClick={clearFilters}>清除筛选</button>} />}
       <div className="subscription-list">
         {filteredSubscriptions?.map((record) => <div className="subscription-entry" key={record.id}><article className={`subscription-row ${record.enabled ? "" : "paused"}`}>
             <span className={`kind-block ${record.kind}`}>{kindNames[record.kind]}</span>
@@ -170,6 +177,12 @@ export function Subscriptions() {
             <button className="icon-button" onClick={(event) => openEdit(record, event.currentTarget)} aria-label={`编辑${record.name}`} title="编辑订阅"><MoreHorizontal size={18} /></button>
           </article>{confirmingPause?.id === record.id && <div className="pause-confirm" role="alertdialog" aria-label={`暂停${record.name}`}><p><strong>暂停“{record.name}”？</strong>暂停后不再自动执行，历史情报和报告会继续保留。</p><div><button className="secondary-button" onClick={() => setConfirmingPause(null)} disabled={update.isPending}>继续订阅</button><button className="danger-button" onClick={() => update.mutate({ record, patch: { enabled: false } })} disabled={update.isPending}>{update.isPending ? "正在暂停" : "确认暂停"}</button></div></div>}</div>)}
       </div>
+      </>}
+      {view === "runtime" && <section className="settings-support" aria-label="Hermes与运行设置">
+        <HermesConnection />
+        <HermesPreferences />
+        <SubscriptionHealth />
+      </section>}
       {dialogOpen && <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && closeDialog()}>
         <section ref={dialogRef} className="dialog-panel" role="dialog" aria-modal="true" aria-labelledby="subscription-dialog-title">
           <div className="dialog-heading">

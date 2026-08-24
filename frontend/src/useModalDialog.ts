@@ -34,7 +34,7 @@ export function useModalDialog<T extends HTMLElement>(open: boolean, onClose: ()
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     const frame = window.requestAnimationFrame(() => {
-      const preferred = dialogRef.current?.querySelector<HTMLElement>("[autofocus]");
+      const preferred = dialogRef.current?.querySelector<HTMLElement>("[autofocus], [data-autofocus]");
       const first = dialogRef.current?.querySelector<HTMLElement>(focusableSelector);
       (preferred ?? first)?.focus();
     });

@@ -170,12 +170,13 @@ class ItemFeedbackPayload(McpModel):
     kind: IntelligenceKind | None = None
     priority: FeedbackPriority | None = None
     ignored: bool | None = None
+    source_unavailable: bool | None = None
 
     @model_validator(mode="after")
     def require_change(self) -> "ItemFeedbackPayload":
         if all(
             value is None
-            for value in (self.title, self.summary, self.kind, self.priority, self.ignored)
+            for value in (self.title, self.summary, self.kind, self.priority, self.ignored, self.source_unavailable)
         ):
             raise ValueError("至少提供一项情报修改")
         return self
@@ -186,6 +187,7 @@ class ItemFeedbackReceipt(McpModel):
     title: str
     importance: float
     ignored: bool
+    source_unavailable: bool
     message: str
     detail_url: str | None = None
 

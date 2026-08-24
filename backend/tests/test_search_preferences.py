@@ -1,9 +1,11 @@
+from datetime import datetime, timedelta, timezone
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.mcp_server.schemas import PublishPayload
 from app.mcp_server.service import PublicationService
-from app.models import Briefing, IntelligenceItem, ItemRevision
+from app.models import Briefing, HermesQualityDecision, IntelligenceItem, ItemRevision
 from app.services.item_maintenance import ItemMaintenanceService
 from app.services.preferences import PreferenceService
 
@@ -33,6 +35,25 @@ def test_natural_language_search_finds_items_and_reports(
     assert payload["briefings"][0]["id"] == report.id
     assert payload["itemTotal"] == 1
     assert payload["briefingTotal"] == 1
+
+
+def test_search_only_returns_latest_report_version(
+    client,
+    db_session: Session,
+    subscription,
+) -> None:
+    versions = [
+        Briefing(subscription_id=subscription.id, title="Agent专题旧版", kind="news", content="Agent旧结论", item_count=1, series_id="search-series", version_number=1),
+        Briefing(subscription_id=subscription.id, title="Agent专题新版", kind="news", content="Agent新结论", item_count=1, series_id="search-series", version_number=2),
+    ]
+    db_session.add_all(versions)
+    db_session.commit()
+
+    response = client.get("/api/search", params={"q": "Agent专题"})
+
+    assert response.status_code == 200
+    assert [report["id"] for report in response.json()["briefings"]] == [versions[1].id]
+    assert response.json()["briefingTotal"] == 1
 
 
 def test_preferences_can_be_saved_listed_and_removed(client) -> None:
@@ -69,6 +90,23 @@ def test_preferences_can_be_saved_listed_and_removed(client) -> None:
     assert client.get("/api/preferences").json()["items"] == []
 
 
+def test_latest_source_preference_replaces_opposite_effect(client) -> None:
+    preferred = client.post(
+        "/api/preferences",
+        json={"scope": "source", "effect": "prefer", "value": "Example", "kind": "news"},
+    )
+    avoided = client.post(
+        "/api/preferences",
+        json={"scope": "source", "effect": "avoid", "value": "Example", "kind": "news"},
+    )
+
+    assert preferred.status_code == 201
+    assert avoided.status_code == 201
+    assert [(item["effect"], item["value"]) for item in client.get("/api/preferences").json()["items"]] == [
+        ("avoid", "Example")
+    ]
+
+
 def test_source_avoidance_is_enforced_during_publication(db_session: Session) -> None:
     PreferenceService(db_session).save(
         scope="source",
@@ -103,6 +141,29 @@ def test_source_avoidance_is_enforced_during_publication(db_session: Session) ->
     assert db_session.scalar(select(IntelligenceItem)) is None
 
 
+def test_low_importance_content_is_kept_with_explicit_quality_reason(db_session: Session) -> None:
+    payload = PublishPayload.model_validate({
+        "idempotencyKey": "low-importance-kept",
+        "traceId": "trace-low-importance-kept",
+        "topic": "边缘线索",
+        "kind": "news",
+        "requestSummary": "保留低优先级线索",
+        "items": [{
+            "title": "低优先级但可追溯的线索", "summary": "暂不重要，仍保留供后续核验",
+            "url": "https://example.com/low-signal", "source": "Example", "importance": 0.2,
+        }],
+    })
+
+    receipt = PublicationService(db_session).publish(payload)
+    decision = db_session.scalar(select(HermesQualityDecision))
+
+    assert receipt.item_count == 1
+    assert db_session.scalar(select(IntelligenceItem)) is not None
+    assert decision is not None
+    assert decision.reason_code == "low_importance"
+    assert decision.reason == "重要性低于40分，已写入但降低展示优先级"
+
+
 def test_hermes_feedback_updates_item_and_keeps_revision(
     db_session: Session,
     seeded_item,
@@ -112,11 +173,13 @@ def test_hermes_feedback_updates_item_and_keeps_revision(
         summary="重新整理后的摘要",
         priority="lower",
         ignored=True,
+        source_unavailable=True,
     )
 
     assert record.summary == "重新整理后的摘要"
     assert record.importance == 0.3
     assert record.is_ignored is True
+    assert record.source_unavailable is True
     revision = db_session.scalar(select(ItemRevision))
     assert revision.action == "hermes_feedback"
     assert "重新整理后的摘要" in revision.after_json
@@ -144,6 +207,30 @@ def test_quality_center_exposes_reason_and_can_restore_filtered_content(client, 
     restored_items = client.get("/api/quality", params={"action": "restored"}).json()["items"]
     assert [item["id"] for item in restored_items] == [decision["id"]]
     assert client.get(f"/api/items/{restored.json()['itemId']}").status_code == 200
+
+
+def test_quality_overview_counts_actionable_content_states(client, db_session: Session, subscription) -> None:
+    record = IntelligenceItem(
+        subscription_id=subscription.id,
+        kind="news",
+        title="需要复核的旧线索",
+        summary="同时属于可能过期、低优先级和原文失效",
+        url="https://example.com/actionable-quality",
+        source="Example",
+        published_at=datetime.now(timezone.utc) - timedelta(days=31),
+        keywords_json="[]",
+        importance=0.2,
+        fingerprint="f" * 64,
+        source_unavailable=True,
+    )
+    db_session.add(record)
+    db_session.commit()
+
+    payload = client.get("/api/quality").json()
+
+    assert payload["staleCount"] == 1
+    assert payload["lowImportanceCount"] == 1
+    assert payload["sourceUnavailableCount"] == 1
 
 
 def test_subscription_health_summarizes_recent_runs(client, db_session: Session, subscription) -> None:

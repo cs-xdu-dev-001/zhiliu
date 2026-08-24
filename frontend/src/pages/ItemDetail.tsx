@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Bookmark, Check, CircleX, ExternalLink, FileText, GitBranch, History, Merge, Pencil, RefreshCw, X } from "lucide-react";
+import { ArrowLeft, Bookmark, Check, ChevronDown, CircleX, ExternalLink, FileText, GitBranch, History, Link2, Merge, Pencil, RefreshCw, SlidersHorizontal, Unlink, X } from "lucide-react";
 import { FormEvent, useState } from "react";
 import { Link, useParams, useSearchParams } from "wouter";
 
 import { api, ApiError } from "../api";
-import type { IntelligenceItem, IntelligenceItemDetail, IntelligenceKind, ItemRevision, MergeCandidate } from "../types";
+import { EmptyState } from "../components/EmptyState";
+import type { HermesPreference, IntelligenceItem, IntelligenceItemDetail, IntelligenceKind, ItemRevision, MergeCandidate } from "../types";
 import { useModalDialog } from "../useModalDialog";
 
 const kindLabels = { news: "热点", paper: "论文", job: "招聘" };
@@ -14,6 +15,8 @@ const revisionLabels: Record<ItemRevision["action"], string> = {
   restored: "恢复有效",
   merged: "合并到其他情报",
   merge_target: "接收重复情报",
+  source_unavailable: "标记原文失效",
+  source_restored: "恢复原文",
 };
 
 function safeBackHref(value: string | null) {
@@ -41,11 +44,17 @@ function safeExternalUrl(value: string) {
   }
 }
 
+function preferenceSource(value: string) {
+  return value.split("·", 1)[0].trim() || value.trim();
+}
+
 function revisionChanges(revision: ItemRevision) {
   if (revision.action === "invalidated") return "该情报已从正常列表移除";
   if (revision.action === "restored") return "该情报已恢复到正常列表";
   if (revision.action === "merged") return `保留记录：情报#${String(revision.after?.mergedIntoId ?? "-")}`;
   if (revision.action === "merge_target") return `并入情报#${String(revision.after?.absorbedItemId ?? "-")}`;
+  if (revision.action === "source_unavailable") return "原文已标记失效";
+  if (revision.action === "source_restored") return "原文已恢复为可访问";
   const labels: Record<string, string> = { title: "标题", summary: "摘要", kind: "分类" };
   return Object.keys(labels)
     .filter((key) => revision.before?.[key] !== revision.after?.[key])
@@ -60,6 +69,7 @@ export function ItemDetail() {
   const [editOpen, setEditOpen] = useState(false);
   const [mergeOpen, setMergeOpen] = useState(false);
   const [mergeTargetId, setMergeTargetId] = useState<number | null>(null);
+  const [showAllRevisions, setShowAllRevisions] = useState(false);
   const [form, setForm] = useState({ title: "", summary: "", kind: "news" as IntelligenceKind });
   const [notice, setNotice] = useState<{ tone: "success" | "error"; text: string } | null>(null);
 
@@ -90,6 +100,7 @@ export function ItemDetail() {
   });
   const edit = useMutation({
     mutationFn: () => api.patch<IntelligenceItem>(`/api/items/${id}/content`, form),
+    onMutate: () => setNotice(null),
     onSuccess: () => {
       setEditOpen(false);
       setNotice({ tone: "success", text: "内容已更新，修改记录已保留" });
@@ -98,6 +109,7 @@ export function ItemDetail() {
   });
   const validity = useMutation({
     mutationFn: (invalid: boolean) => api.put<IntelligenceItem>(`/api/items/${id}/validity`, { invalid }),
+    onMutate: () => setNotice(null),
     onSuccess: (next) => {
       setNotice({ tone: "success", text: next.isInvalid ? "已标记无效" : "已恢复有效" });
       refreshItem();
@@ -105,6 +117,7 @@ export function ItemDetail() {
   });
   const merge = useMutation({
     mutationFn: (targetId: number) => api.post(`/api/items/${id}/merge`, { targetId }),
+    onMutate: () => setNotice(null),
     onSuccess: () => {
       setMergeOpen(false);
       setMergeTargetId(null);
@@ -114,7 +127,30 @@ export function ItemDetail() {
   });
   const rerun = useMutation({
     mutationFn: (subscriptionId: number) => api.post(`/api/subscriptions/${subscriptionId}/run`),
+    onMutate: () => setNotice(null),
     onSuccess: () => setNotice({ tone: "success", text: "已交给Hermes重新整理，可在任务记录查看进度" }),
+  });
+  const avoidSource = useMutation({
+    mutationFn: ({ source, kind, itemId }: { source: string; kind: IntelligenceKind; itemId: number }) => api.post<HermesPreference>("/api/preferences", {
+      scope: "source",
+      effect: "avoid",
+      value: source,
+      kind,
+      note: `从情报#${itemId}添加`,
+    }),
+    onMutate: () => setNotice(null),
+    onSuccess: (preference, variables) => {
+      setNotice({ tone: "success", text: `已记住：以后减少来自${preference.value}的${kindLabels[variables.kind]}` });
+      queryClient.invalidateQueries({ queryKey: ["preferences"] });
+    },
+  });
+  const sourceAvailability = useMutation({
+    mutationFn: (unavailable: boolean) => api.put<IntelligenceItem>(`/api/items/${id}/source-availability`, { unavailable }),
+    onMutate: () => setNotice(null),
+    onSuccess: (next) => {
+      setNotice({ tone: "success", text: next.sourceUnavailable ? "已标记原文失效" : "已恢复原文链接" });
+      refreshItem();
+    },
   });
   const { dialogRef: editDialogRef, rememberTrigger: rememberEditTrigger } = useModalDialog<HTMLElement>(editOpen, () => setEditOpen(false), edit.isPending);
   const { dialogRef: mergeDialogRef, rememberTrigger: rememberMergeTrigger } = useModalDialog<HTMLElement>(mergeOpen, () => setMergeOpen(false), merge.isPending);
@@ -130,8 +166,10 @@ export function ItemDetail() {
   const date = item.publishedAt ?? item.createdAt;
   const merged = item.mergedIntoId !== null;
   const subscriptionOrigin = item.publications.some((publication) => publication.origin === "subscription-hermes");
-  const busy = update.isPending || edit.isPending || validity.isPending || merge.isPending || rerun.isPending;
-  const sourceUrl = safeExternalUrl(item.url);
+  const busy = update.isPending || edit.isPending || validity.isPending || merge.isPending || rerun.isPending || avoidSource.isPending || sourceAvailability.isPending;
+  const sourceUrl = item.sourceUnavailable ? null : safeExternalUrl(item.url);
+  const sourcePreference = preferenceSource(item.source);
+  const sourceLabel = item.source.trim() || "来源未标注";
 
   function openEditor(trigger: HTMLElement) {
     rememberEditTrigger(trigger);
@@ -159,7 +197,9 @@ export function ItemDetail() {
         <div className="detail-meta">
           <span className={`kind-tag ${item.kind}`}>{kindLabels[item.kind]}</span>
           {item.isInvalid && <span className="invalid-tag">无效</span>}
-          <span>{item.source}</span>
+          {item.isStale && !item.isInvalid && !merged && <span className="stale-tag">可能过期</span>}
+          {item.sourceUnavailable && <span className="source-failed-tag">原文失效</span>}
+          <span>{sourceLabel}</span>
           <time dateTime={date}>{new Date(date).toLocaleString("zh-CN")}</time>
           <span>{Math.round(item.importance * 100)}分</span>
         </div>
@@ -174,14 +214,27 @@ export function ItemDetail() {
 
       <section className="maintenance-section" aria-labelledby="maintenance-heading">
         <div className="lineage-heading"><Pencil size={19} /><h2 id="maintenance-heading">内容维护</h2></div>
-        <div className="maintenance-actions">
+        <div className="maintenance-actions maintenance-primary-actions">
           <button disabled={busy || merged} onClick={(event) => openEditor(event.currentTarget)}><Pencil size={17} />编辑内容</button>
-          <button disabled={busy || merged} onClick={() => validity.mutate(!item.isInvalid)}><CircleX size={17} />{item.isInvalid ? "恢复有效" : "标记无效"}</button>
-          <button disabled={busy || merged} onClick={(event) => { rememberMergeTrigger(event.currentTarget); setMergeTargetId(null); merge.reset(); setMergeOpen(true); }}><Merge size={17} />合并重复</button>
           {subscriptionOrigin && item.subscriptionId > 0 && <button disabled={busy || merged} onClick={() => rerun.mutate(item.subscriptionId)}><RefreshCw size={17} />重新整理</button>}
         </div>
+        <details className="maintenance-more">
+          <summary>更多维护<ChevronDown size={17} aria-hidden="true" /></summary>
+          <div className="maintenance-actions maintenance-secondary-actions">
+            <button disabled={busy || merged} onClick={() => validity.mutate(!item.isInvalid)}><CircleX size={17} />{item.isInvalid ? "恢复有效" : "标记无效"}</button>
+            <button disabled={busy || merged} onClick={(event) => { rememberMergeTrigger(event.currentTarget); setMergeTargetId(null); merge.reset(); setMergeOpen(true); }}><Merge size={17} />合并重复</button>
+            <button disabled={busy || merged || !sourcePreference} onClick={() => avoidSource.mutate({ source: sourcePreference, kind: item.kind, itemId: item.id })}><SlidersHorizontal size={17} />少看此来源</button>
+            <button disabled={busy || merged} onClick={() => sourceAvailability.mutate(!item.sourceUnavailable)}>{item.sourceUnavailable ? <Link2 size={17} /> : <Unlink size={17} />}{item.sourceUnavailable ? "恢复原文" : "标记原文失效"}</button>
+          </div>
+        </details>
         {!subscriptionOrigin && !merged && <p className="maintenance-guidance">微信Hermes内容需回到微信重新发起，避免知流重复调用Hermes。</p>}
       </section>
+
+      {(notice || validity.isError || rerun.isError || avoidSource.isError || sourceAvailability.isError) && (
+        <div className={`action-notice ${notice?.tone ?? "error"}`} role={notice?.tone === "success" ? "status" : "alert"}>
+          {notice?.text ?? errorText(validity.error ?? rerun.error ?? avoidSource.error ?? sourceAvailability.error)}
+        </div>
+      )}
 
       <section className="lineage-section" aria-labelledby="lineage-heading">
         <div className="lineage-heading"><GitBranch size={19} /><h2 id="lineage-heading">写入记录</h2></div>
@@ -199,7 +252,7 @@ export function ItemDetail() {
                 </div>
                 <div className="lineage-links">
                   {publication.briefingId && publication.briefingTitle && <Link href={`/reports/${publication.briefingId}`}><FileText size={16} />{publication.briefingTitle}</Link>}
-                  <Link href={`/traces/${publication.id}`}>查看完整链路</Link>
+                  <Link href={`/traces/${publication.id}?from=${encodeURIComponent(`/items/${item.id}`)}`}>查看完整链路</Link>
                 </div>
               </div>
             ))}
@@ -211,29 +264,31 @@ export function ItemDetail() {
         <div className="lineage-heading"><History size={19} /><h2 id="revision-heading">修改记录</h2></div>
         {item.revisions.length > 0 ? (
           <div className="revision-list">
-            {item.revisions.map((revision) => (
+            {item.revisions.slice(0, showAllRevisions ? undefined : 3).map((revision) => (
               <div className="revision-row" key={revision.id}>
                 <strong>{revisionLabels[revision.action] ?? revision.action}</strong>
                 <p>{revisionChanges(revision)}</p>
                 <time dateTime={revision.createdAt}>{new Date(revision.createdAt).toLocaleString("zh-CN")}</time>
               </div>
             ))}
+            {item.revisions.length > 3 && (
+              <button className="revision-toggle" type="button" aria-expanded={showAllRevisions} onClick={() => setShowAllRevisions((current) => !current)}>
+                {showAllRevisions ? "收起记录" : `查看全部${item.revisions.length}条`}
+                <ChevronDown size={17} aria-hidden="true" />
+              </button>
+            )}
           </div>
         ) : <p className="trace-empty">尚未人工修改</p>}
       </section>
 
-      {(notice || update.isError || validity.isError || rerun.isError) && (
-        <div className={`action-notice ${notice?.tone ?? "error"}`} role={notice?.tone === "success" ? "status" : "alert"}>
-          {notice?.text ?? errorText(update.error ?? validity.error ?? rerun.error)}
-        </div>
-      )}
+      {update.isError && <div className="action-notice error" role="alert">{errorText(update.error)}</div>}
       <div className="detail-actions">
         <button disabled={busy || merged} onClick={() => update.mutate({ isSaved: !item.isSaved })}><Bookmark size={17} fill={item.isSaved ? "currentColor" : "none"} />{item.isSaved ? "取消收藏" : "收藏"}</button>
         <button disabled={busy || merged} onClick={() => update.mutate({ isRead: !item.isRead })}><Check size={17} />{item.isRead ? "标记未读" : "标记已读"}</button>
         <button disabled={busy || merged} onClick={() => update.mutate({ isIgnored: true })}><CircleX size={17} />忽略</button>
         {sourceUrl
           ? <a className="primary-compact" href={sourceUrl} target="_blank" rel="noreferrer"><ExternalLink size={17} />打开原文（新窗口）</a>
-          : <span className="source-unavailable">原文链接不可用</span>}
+          : <span className="source-unavailable">{item.sourceUnavailable ? "原文已标记失效" : "原文链接不可用"}</span>}
       </div>
 
       {editOpen && (
@@ -258,7 +313,7 @@ export function ItemDetail() {
             <p className="merge-guidance">选择要保留的情报。当前记录仍用于审计，报告和写入链路会转移到保留项。</p>
             {candidates.isPending && <div className="list-skeleton"><i /><i /></div>}
             {candidates.isError && <div className="inline-error" role="alert">候选情报加载失败。<button onClick={() => candidates.refetch()}>重新加载</button></div>}
-            {candidates.data?.length === 0 && <div className="empty-state"><p>没有同分类的可合并情报</p></div>}
+            {candidates.data?.length === 0 && <EmptyState compact title="未发现高相似度的重复情报" />}
             <div className="merge-candidate-list">
               {candidates.data?.map((candidate) => (
                 <label className={`merge-candidate ${mergeTargetId === candidate.id ? "selected" : ""}`} key={candidate.id}>

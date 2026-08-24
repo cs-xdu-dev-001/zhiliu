@@ -1,6 +1,9 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, HTTPException, status
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
 from app import models  # noqa: F401
 from app.api.briefings import router as briefings_router
@@ -13,7 +16,7 @@ from app.api.search import router as search_router
 from app.api.preferences import router as preferences_router
 from app.api.quality import router as quality_router
 from app.api.subscription_health import router as subscription_health_router
-from app.db import SessionLocal
+from app.db import SessionLocal, get_db
 from app.core.config import get_settings
 from app.core.config import Settings
 from app.mcp_server.server import SessionFactory, build_mcp_asgi
@@ -41,7 +44,7 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
-        with SessionLocal() as db:
+        with mcp_session_factory() as db:
             seed_database(
                 db,
                 demo_mode=runtime_settings.demo_mode,
@@ -66,7 +69,14 @@ def create_app(
     application.include_router(subscription_health_router)
 
     @application.get("/api/health")
-    def health() -> dict[str, str]:
+    def health(db: Session = Depends(get_db)) -> dict[str, str]:
+        try:
+            db.execute(text("SELECT 1")).scalar_one()
+        except SQLAlchemyError as error:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="数据库暂时不可用",
+            ) from error
         return {"status": "ok", "service": "zhiliu"}
 
     application.mount("/api", mcp_asgi)

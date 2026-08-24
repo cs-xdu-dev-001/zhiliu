@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Bot, Database, FileText, MessageCircle, Radio, Workflow } from "lucide-react";
+import { Bot, Database, FileText, MessageCircle, Radio, Workflow } from "lucide-react";
 import { Link, useParams } from "wouter";
 
 import { api, ApiError } from "../api";
@@ -21,11 +21,11 @@ export function TraceDetail() {
 
   const trace = query.data;
   const isWeixin = trace.origin === "weixin-hermes";
+  const isReport = trace.origin === "web-report";
   const from = encodeURIComponent(`/traces/${trace.publicationId}`);
 
   return (
     <article className="trace-page">
-      <Link className="detail-back" href={trace.briefing ? `/reports/${trace.briefing.id}` : "/feed"}><ArrowLeft size={17} />返回内容详情</Link>
       <header className="trace-header">
         <h2>完整处理链路</h2>
         <p>追踪号：{trace.traceId ?? `回执-${trace.publicationId}`}</p>
@@ -34,7 +34,7 @@ export function TraceDetail() {
         <section className="trace-step">
           <div className="trace-marker"><MessageCircle size={19} /></div>
           <div>
-            <h3>{isWeixin ? "微信指令" : "定时订阅输入"}</h3>
+            <h3>{isWeixin ? "微信指令" : isReport ? "知流报告要求" : "定时订阅输入"}</h3>
             <p>{trace.requestSummary}</p>
           </div>
         </section>
@@ -48,7 +48,7 @@ export function TraceDetail() {
         <section className="trace-step">
           <div className="trace-marker"><Workflow size={19} /></div>
           <div>
-            <h3>{isWeixin ? "MCP写入知流" : "定时任务写入知流"}</h3>
+            <h3>{isWeixin ? "MCP写入知流" : isReport ? "报告与来源写入知流" : "定时任务写入知流"}</h3>
             <p>回执#{trace.publicationId}，写入{trace.itemCount}条，复用{trace.skippedCount}条</p>
             <time dateTime={trace.createdAt}>{new Date(trace.createdAt).toLocaleString("zh-CN")}</time>
           </div>
@@ -62,7 +62,7 @@ export function TraceDetail() {
                 {trace.items.map((item) => (
                   <div key={item.id}>
                     <Link href={`/items/${item.id}?from=${from}`}>{item.title}</Link>
-                    <span>{item.wasInserted ? "新写入" : "复用已有情报"} · {item.source}{item.isInvalid ? " · 已标记无效" : ""}</span>
+                    <span>{item.wasInserted ? "新写入" : "复用已有情报"} · {item.source.trim() || "来源未标注"}{item.isInvalid ? " · 已标记无效" : ""}</span>
                   </div>
                 ))}
               </div>
@@ -79,7 +79,7 @@ export function TraceDetail() {
           </div>
         </section>
       </div>
-      <div className="trace-origin"><Radio size={16} />来源分类：{trace.subscription.name}</div>
+      <div className="trace-origin"><Radio size={16} />{isReport ? `来源情报：${trace.items.length}条` : `来源分类：${trace.subscription.name}`}</div>
     </article>
   );
 }

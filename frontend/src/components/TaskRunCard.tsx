@@ -26,17 +26,21 @@ export function TaskRunCard({ run }: { run: TaskRun }) {
   const meta = taskStatusMeta[run.status];
   const Icon = meta.icon;
   const title = run.topic || run.subscriptionName || `任务#${run.id}`;
+  const message = taskMessage(run);
+  const showMessage = run.status !== "success" || Boolean(run.resultSummary);
 
   return (
     <Link className={`task-row task-row-link ${run.status}`} href={`/tasks/${run.id}`}>
       <Icon size={19} />
       <div className="task-copy">
         <strong>{title}</strong>
-        <p className={run.status === "failed" ? "task-message danger" : "task-message"}>{taskMessage(run)}</p>
+        {showMessage && <p className={run.status === "failed" ? "task-message danger" : "task-message"}>{message}</p>}
         <span className="task-meta">
           <time dateTime={run.startedAt}>{new Date(run.startedAt).toLocaleString("zh-CN")}</time>
           {run.durationMs !== null && ` · ${(run.durationMs / 1000).toFixed(1)}秒`}
           {run.origin === "weixin-hermes" && " · 微信Hermes"}
+          {run.origin === "web-report" && " · 知流报告"}
+          {run.retryOfId && <span className="retry-indicator">手动重试</span>}
           {run.status === "queued" && run.retryCount > 0 && <span className="retry-indicator">自动重试{run.retryCount}/2</span>}
         </span>
       </div>

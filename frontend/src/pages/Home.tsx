@@ -20,18 +20,25 @@ const firstWeChatCommand = "请检索今天AI Agent领域的重要更新，整�
 
 export function Home() {
   const [copyState, setCopyState] = useState<"idle" | "success" | "error">("idle");
-  const query = useQuery({ queryKey: ["dashboard"], queryFn: () => api.get<Dashboard>("/api/dashboard"), refetchInterval: 5000 });
+  const query = useQuery({
+    queryKey: ["dashboard"],
+    queryFn: () => api.get<Dashboard>("/api/dashboard"),
+    refetchInterval: (current) => current.state.data?.recentRuns?.some((run) => run.status === "queued" || run.status === "running") ? 5000 : 60_000,
+  });
   const hermesQuery = useQuery({
     queryKey: ["hermes-connection"],
     queryFn: () => api.get<HermesConnection>("/api/integrations/hermes"),
-    refetchInterval: 15000,
+    refetchInterval: (current) => current.state.data?.status === "connected" ? 60_000 : 15_000,
   });
   if (query.isPending) return <div className="dashboard-skeleton"><i /><i /><i /><i /></div>;
   if (query.isError) return <div className="inline-error">首页数据加载失败<button type="button" onClick={() => query.refetch()}>重新加载</button></div>;
   const data = query.data;
   const latestFailedRun = data.recentRuns?.find((run) => run.status === "failed");
   const hermesNeedsAttention = hermesQuery.isError || (hermesQuery.data && hermesQuery.data.status !== "connected");
-  const hasAttention = data.failedRuns > 0 || Boolean(hermesNeedsAttention);
+  const hermesTemporarilyOffline = hermesQuery.isError
+    || hermesQuery.data?.status === "unreachable"
+    || hermesQuery.data?.status === "error";
+  const showConnectionNotice = hermesNeedsAttention && !hermesTemporarilyOffline;
   const hermesTitle = hermesQuery.isError
     ? "Hermes连接检查失败"
     : hermesIssueTitle[hermesQuery.data?.status ?? "error"] ?? "Hermes连接异常";
@@ -63,24 +70,23 @@ export function Home() {
       <section className="metric-grid" aria-label="情报概览">
         {metrics.map(({ label, value, icon: Icon, tone, href }) => <Link className={`metric ${tone}`} href={href} key={label}><Icon size={19} /><div><strong>{value}</strong><span>{label}</span></div></Link>)}
       </section>
-      {hasAttention && <section className="home-attention" aria-labelledby="attention-heading">
-        <div className="section-heading"><h2 id="attention-heading">需要处理</h2></div>
+      {data.failedRuns > 0 && <section className="home-attention" aria-label="需要处理">
         <div className="attention-list">
-          {data.failedRuns > 0 && <Link className="attention-row danger" href="/tasks?status=failed">
+          {data.failedRuns > 0 && <Link className="attention-row danger" href="/tasks?status=failed" aria-label={`${data.failedRuns}个异常任务，查看异常任务`}>
             <span className="attention-icon"><TriangleAlert size={20} /></span>
             <span className="attention-copy">
               <strong>{data.failedRuns}个异常任务</strong>
               <span>{latestFailedRun ? `${latestFailedRun.topic || latestFailedRun.subscriptionName || `任务#${latestFailedRun.id}`}：${taskMessage(latestFailedRun)}` : "查看失败原因并决定是否重试。"}</span>
             </span>
-            <span className="attention-action">查看异常任务</span>
-          </Link>}
-          {hermesNeedsAttention && <Link className="attention-row warning" href="/settings">
-            <span className="attention-icon"><Cable size={20} /></span>
-            <span className="attention-copy"><strong>{hermesTitle}</strong><span>{hermesMessage}</span></span>
-            <span className="attention-action">检查Hermes连接</span>
+            <span className="attention-action"><span className="attention-action-full">查看异常任务</span><span className="attention-action-short" aria-hidden="true">查看</span></span>
           </Link>}
         </div>
       </section>}
+      {showConnectionNotice && <Link className="home-connection-note" href="/settings?view=runtime">
+        <Cable size={18} />
+        <span><strong>{hermesTitle}</strong><span>{hermesMessage}</span></span>
+        <span className="home-connection-action">去设置</span>
+      </Link>}
       {showQuickStart && <section className="quick-start" aria-labelledby="quick-start-heading">
         <span className="quick-start-icon"><MessageSquareText size={22} /></span>
         <div className="quick-start-copy">
@@ -101,12 +107,12 @@ export function Home() {
             : <div className="dashboard-empty">没有待阅读情报，新的微信整理结果会显示在这里。<Link href="/feed">查看全部情报</Link></div>}
         </section>
         <div className="home-side-column">
-          {hasRecentRuns && <section>
-            <div className="section-heading"><h2>最近处理动态</h2><Link href="/tasks">全部任务</Link></div>
+          {hasRecentRuns && <section className="home-runs">
+            <div className="section-heading"><h2>最近处理动态</h2><div className="section-heading-actions">{hermesTemporarilyOffline && <Link className="section-status" href="/settings?view=runtime"><Cable size={14} />Hermes离线</Link>}<Link href="/tasks">全部任务</Link></div></div>
             <div className="task-list task-list-compact">{data.recentRuns.slice(0, 2).map((run) => <TaskRunCard key={run.id} run={run} />)}</div>
           </section>}
-          <section>
-            <div className="section-heading"><h2>最新简报</h2><Link href="/reports">历史报告</Link></div>
+          <section className="home-briefing">
+            <div className="section-heading"><h2>最新简报</h2><div className="section-heading-actions">{hermesTemporarilyOffline && !hasRecentRuns && <Link className="section-status" href="/settings?view=runtime"><Cable size={14} />Hermes离线</Link>}<Link href="/reports">历史报告</Link></div></div>
             {data.latestBriefing
               ? <BriefingCard briefing={data.latestBriefing} detailHref={`/reports/${data.latestBriefing.id}?from=${encodeURIComponent("/")}`} />
               : <div className="dashboard-empty">还没有简报，Hermes完成整理并写入后会显示在这里。<Link href="/tasks">查看处理进度</Link></div>}

@@ -74,8 +74,8 @@ export function Reports() {
 
   return <section className="stack-lg">
     <div className="report-tools">
-      <label className="feed-search"><Search size={18} /><input type="search" aria-label="搜索报告" placeholder="搜索报告标题或正文" maxLength={200} value={searchDraft} onChange={(event) => setSearchDraft(event.target.value)} />{searchDraft && <button aria-label="清除报告搜索" onClick={() => setSearchDraft("")}><X size={17} /></button>}</label>
-      <select aria-label="报告时间" value={period} onChange={(event) => setView({ period: event.target.value, page: 1 })}><option value="">全部时间</option><option value="7">最近7天</option><option value="30">最近30天</option></select>
+      <label className="feed-search"><Search size={18} /><input type="search" aria-label="搜索报告" placeholder="搜索报告" maxLength={200} value={searchDraft} onChange={(event) => setSearchDraft(event.target.value)} />{searchDraft && <button aria-label="清除报告搜索" onClick={() => setSearchDraft("")}><X size={17} /></button>}</label>
+      <select aria-label="报告时间" value={period} onChange={(event) => setView({ period: event.target.value, page: 1 })}><option value="">不限</option><option value="7">近7天</option><option value="30">近30天</option></select>
     </div>
     <div className="report-filter-row">
       <div className="segmented" aria-label="报告分类">{kinds.map((item) => <button key={item.value} aria-pressed={kind === item.value} className={kind === item.value ? "active" : ""} onClick={() => setView({ kind: item.value, page: 1 })}>{item.label}</button>)}</div>
@@ -84,7 +84,7 @@ export function Reports() {
     {query.isPending && <div className="list-skeleton"><i /><i /><i /></div>}
     {query.isError && <div className="inline-error" role="alert">报告加载失败。<button onClick={() => query.refetch()}>重新加载</button></div>}
     {query.data?.items.length === 0 && (hasFilters
-      ? <EmptyState title={q ? `没有找到“${q}”相关的报告` : "当前筛选下没有报告"} description="可以调整关键词、分类或时间范围后再试。" action={<button className="text-button" onClick={clearFilters}>清除筛选</button>} />
+      ? <EmptyState compact title={q ? `没有找到“${q}”相关的报告` : "当前筛选下没有报告"} action={<button className="text-button" onClick={clearFilters}>清除筛选</button>} />
       : <EmptyState title="还没有报告" description="在微信让Hermes将内容整理到知流并生成简报，结果会显示在这里。" action={<Link className="secondary-link" href="/">查看示例指令</Link>} />)}
     <div className="briefing-list">
       {query.data?.items.map((briefing) => <BriefingCard key={briefing.id} briefing={briefing} detailHref={`/reports/${briefing.id}?from=${encodeURIComponent(returnHref)}`} />)}

@@ -71,6 +71,7 @@ def get_publication_trace(
                 ordinal=link.ordinal,
                 was_inserted=link.was_inserted,
                 is_invalid=item.is_invalid,
+                source_unavailable=item.source_unavailable,
             )
             for link, item in rows
         ],

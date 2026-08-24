@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta, timezone
+
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -35,6 +37,128 @@ def test_list_items_treats_search_wildcards_as_text(client: TestClient, seeded_i
 
     assert response.status_code == 200
     assert response.json()["total"] == 0
+
+
+def test_list_items_filters_by_recent_days(
+    client: TestClient,
+    db_session: Session,
+    seeded_item,
+    subscription,
+) -> None:
+    old_item = IntelligenceItem(
+        subscription_id=subscription.id,
+        kind="news",
+        title="历史情报",
+        summary="超过时间范围",
+        url="https://example.com/old-item",
+        source="Example",
+        published_at=datetime.now(timezone.utc) - timedelta(days=60),
+        keywords_json="[]",
+        importance=0.5,
+        fingerprint=item_fingerprint("历史情报", "https://example.com/old-item"),
+    )
+    db_session.add(old_item)
+    db_session.commit()
+
+    response = client.get("/api/items", params={"state": "unread", "days": 30})
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 1
+    assert response.json()["items"][0]["id"] == seeded_item.id
+    assert client.get("/api/items", params={"days": 0}).status_code == 422
+
+
+def test_list_items_identifies_stale_news_and_jobs_but_not_papers(
+    client: TestClient,
+    db_session: Session,
+    subscription,
+) -> None:
+    now = datetime.now(timezone.utc)
+    records = [
+        IntelligenceItem(subscription_id=subscription.id, kind="news", title="旧热点", summary="超过30天", url="https://example.com/old-news", source="Example", published_at=now - timedelta(days=31), keywords_json="[]", importance=0.5, fingerprint=item_fingerprint("旧热点", "https://example.com/old-news")),
+        IntelligenceItem(subscription_id=subscription.id, kind="job", title="旧招聘", summary="超过45天", url="https://example.com/old-job", source="Example", published_at=now - timedelta(days=46), keywords_json="[]", importance=0.5, fingerprint=item_fingerprint("旧招聘", "https://example.com/old-job")),
+        IntelligenceItem(subscription_id=subscription.id, kind="paper", title="经典论文", summary="论文不自动过期", url="https://example.com/old-paper", source="Example", published_at=now - timedelta(days=400), keywords_json="[]", importance=0.5, fingerprint=item_fingerprint("经典论文", "https://example.com/old-paper")),
+    ]
+    db_session.add_all(records)
+    db_session.commit()
+
+    response = client.get("/api/items", params={"state": "stale", "sort": "oldest"})
+
+    assert response.status_code == 200
+    assert [item["title"] for item in response.json()["items"]] == ["旧招聘", "旧热点"]
+    assert all(item["isStale"] for item in response.json()["items"])
+    paper = client.get("/api/items", params={"kind": "paper", "q": "经典论文"}).json()["items"][0]
+    assert paper["isStale"] is False
+
+
+def test_list_items_filters_low_importance_without_removing_content(
+    client: TestClient,
+    db_session: Session,
+    subscription,
+) -> None:
+    low = IntelligenceItem(
+        subscription_id=subscription.id, kind="news", title="低优先级线索", summary="仍然保留",
+        url="https://example.com/low", source="Example", keywords_json="[]", importance=0.39,
+        fingerprint=item_fingerprint("低优先级线索", "https://example.com/low"),
+    )
+    db_session.add(low)
+    db_session.commit()
+
+    response = client.get("/api/items", params={"state": "low"})
+
+    assert response.status_code == 200
+    assert [item["id"] for item in response.json()["items"]] == [low.id]
+    assert client.get(f"/api/items/{low.id}").status_code == 200
+
+
+def test_source_availability_can_be_filtered_restored_and_audited(client: TestClient, db_session: Session, seeded_item) -> None:
+    unavailable = client.put(
+        f"/api/items/{seeded_item.id}/source-availability",
+        json={"unavailable": True},
+    )
+    filtered = client.get("/api/items", params={"state": "source-unavailable"})
+    restored = client.put(
+        f"/api/items/{seeded_item.id}/source-availability",
+        json={"unavailable": False},
+    )
+
+    assert unavailable.status_code == 200
+    assert unavailable.json()["sourceUnavailable"] is True
+    assert [item["id"] for item in filtered.json()["items"]] == [seeded_item.id]
+    assert restored.json()["sourceUnavailable"] is False
+    assert [revision.action for revision in db_session.query(ItemRevision).order_by(ItemRevision.id)] == [
+        "source_unavailable", "source_restored",
+    ]
+
+
+def test_list_items_filters_and_lists_sources(
+    client: TestClient,
+    db_session: Session,
+    seeded_item,
+    subscription,
+) -> None:
+    other = IntelligenceItem(
+        subscription_id=subscription.id,
+        kind="news",
+        title="另一来源情报",
+        summary="用于来源筛选",
+        url="https://example.com/other-source",
+        source="AI Weekly",
+        keywords_json="[]",
+        importance=0.5,
+        fingerprint=item_fingerprint("另一来源情报", "https://example.com/other-source"),
+    )
+    db_session.add(other)
+    db_session.commit()
+
+    sources = client.get("/api/items/sources")
+    filtered = client.get("/api/items", params={"state": "unread", "source": "example research"})
+
+    assert sources.status_code == 200
+    assert sources.json() == ["AI Weekly", "Example Research"]
+    assert filtered.status_code == 200
+    assert filtered.json()["total"] == 1
+    assert filtered.json()["items"][0]["id"] == seeded_item.id
 
 
 def test_list_items_supports_stable_sorting(
@@ -407,7 +531,8 @@ def test_merge_candidates_prioritize_similar_titles(
     response = client.get(f"/api/items/{seeded_item.id}/merge-candidates")
 
     assert response.status_code == 200
-    assert response.json()[0]["id"] == similar.id
+    assert [candidate["id"] for candidate in response.json()] == [similar.id]
+    assert response.json()[0]["similarity"] >= 0.55
 
 
 def test_item_detail_exposes_revision_history_and_merge_target(

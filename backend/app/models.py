@@ -1,6 +1,7 @@
+import json
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -58,6 +59,7 @@ class IntelligenceItem(Base):
     is_saved: Mapped[bool] = mapped_column(Boolean, default=False)
     is_ignored: Mapped[bool] = mapped_column(Boolean, default=False)
     is_invalid: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    source_unavailable: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     merged_into_id: Mapped[int | None] = mapped_column(
         ForeignKey("intelligence_items.id"),
         nullable=True,
@@ -99,6 +101,9 @@ class ItemRevision(Base):
 
 class Briefing(Base):
     __tablename__ = "briefings"
+    __table_args__ = (
+        UniqueConstraint("series_id", "version_number", name="uq_briefings_series_version"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     subscription_id: Mapped[int] = mapped_column(ForeignKey("subscriptions.id"), index=True)
@@ -108,9 +113,27 @@ class Briefing(Base):
     item_count: Mapped[int] = mapped_column(Integer, default=0)
     period_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     period_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    series_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    version_number: Mapped[int] = mapped_column(Integer, default=1)
+    previous_version_id: Mapped[int | None] = mapped_column(
+        ForeignKey("briefings.id"), nullable=True, index=True
+    )
+    generation_task_id: Mapped[int | None] = mapped_column(
+        ForeignKey("task_runs.id"), nullable=True, index=True
+    )
+    citation_status: Mapped[str] = mapped_column(String(30), default="unchecked")
+    citation_warnings_json: Mapped[str] = mapped_column(Text, default="[]")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     subscription: Mapped[Subscription] = relationship(back_populates="briefings")
+
+    @property
+    def citation_warnings(self) -> list[str]:
+        try:
+            value = json.loads(self.citation_warnings_json)
+        except (TypeError, ValueError):
+            return []
+        return [str(item) for item in value] if isinstance(value, list) else []
 
 
 class HermesPublication(Base):
@@ -166,9 +189,27 @@ class PublicationItem(Base):
 
 class TaskRun(Base):
     __tablename__ = "task_runs"
+    __table_args__ = (
+        Index(
+            "uq_task_runs_active_retry",
+            "retry_of_id",
+            unique=True,
+            sqlite_where=text("retry_of_id IS NOT NULL AND status IN ('queued', 'running')"),
+        ),
+        Index(
+            "uq_task_runs_active_report_series",
+            "report_series_id",
+            unique=True,
+            sqlite_where=text(
+                "origin = 'web-report' AND report_series_id IS NOT NULL "
+                "AND status IN ('queued', 'running')"
+            ),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     subscription_id: Mapped[int] = mapped_column(ForeignKey("subscriptions.id"), index=True)
+    retry_of_id: Mapped[int | None] = mapped_column(ForeignKey("task_runs.id"), nullable=True, index=True)
     hermes_run_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     trace_id: Mapped[str | None] = mapped_column(String(160), nullable=True, unique=True, index=True)
     origin: Mapped[str] = mapped_column(String(40), default="subscription-hermes")
@@ -183,6 +224,9 @@ class TaskRun(Base):
     retry_count: Mapped[int] = mapped_column(Integer, default=0)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     raw_output: Mapped[str | None] = mapped_column(Text, nullable=True)
+    report_item_ids_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    report_series_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    report_version_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     subscription: Mapped[Subscription] = relationship(back_populates="runs")
 

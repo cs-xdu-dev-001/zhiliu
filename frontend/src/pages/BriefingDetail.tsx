@@ -1,10 +1,11 @@
-import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Copy, Download, ExternalLink, GitBranch } from "lucide-react";
-import { useState } from "react";
-import { Link, useParams, useSearchParams } from "wouter";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { AlertTriangle, ArrowLeft, CheckCircle2, Copy, Download, ExternalLink, GitBranch, RefreshCw, X } from "lucide-react";
+import { useRef, useState } from "react";
+import { Link, useLocation, useParams, useSearchParams } from "wouter";
 
 import { api, ApiError } from "../api";
-import type { BriefingDetail as BriefingDetailType } from "../types";
+import type { BriefingDetail as BriefingDetailType, TaskRun } from "../types";
+import { useModalDialog } from "../useModalDialog";
 
 const kindLabels = { news: "热点", paper: "论文", job: "招聘" };
 
@@ -26,14 +27,26 @@ function markdownText(value: string) {
   return value.replace(/([\\\[\]])/g, "\\$1");
 }
 
+function reportContent(content: string, sourceCount: number) {
+  return content.split(/(\[\d+])/g).map((part, index) => {
+    const match = /^\[(\d+)]$/.exec(part);
+    if (!match) return part;
+    const citation = Number(match[1]);
+    return citation >= 1 && citation <= sourceCount
+      ? <a aria-label={`查看来源${citation}`} className="inline-citation" href={`#source-${citation}`} key={`${part}-${index}`}>{part}</a>
+      : part;
+  });
+}
+
 function reportMarkdown(report: BriefingDetailType) {
   const sources = report.sourceItems.length
     ? report.sourceItems.map((item, index) => {
-        const sourceUrl = safeSourceUrl(item.url);
+        const sourceUrl = item.sourceUnavailable ? null : safeSourceUrl(item.url);
+        const source = item.source.trim() || "来源未标注";
         const title = markdownText(item.title);
         return sourceUrl
-          ? `${index + 1}. [${title}](<${sourceUrl}>) — ${item.source}`
-          : `${index + 1}. ${title} — ${item.source}（原文链接不可用）`;
+          ? `${index + 1}. [${title}](<${sourceUrl}>) — ${source}`
+          : `${index + 1}. ${title} — ${source}（${item.sourceUnavailable ? "原文已失效" : "原文链接不可用"}）`;
       }).join("\n")
     : "暂无可追溯来源";
   return `# ${report.title}\n\n- 类型：${kindLabels[report.kind]}\n- 生成时间：${new Date(report.createdAt).toLocaleString("zh-CN")}\n- 来源情报：${report.sourceItems.length}条\n\n${report.content.trim()}\n\n## 来源情报\n\n${sources}\n`;
@@ -52,14 +65,43 @@ function safeBackHref(value: string | null) {
 }
 
 export function BriefingDetail() {
+  const [, navigate] = useLocation();
   const { id = "" } = useParams<{ id: string }>();
   const [searchParams] = useSearchParams();
   const [actionNotice, setActionNotice] = useState<{ tone: "success" | "error"; text: string } | null>(null);
+  const [regenerateOpen, setRegenerateOpen] = useState(false);
+  const [regenerateInstruction, setRegenerateInstruction] = useState("");
+  const regenerateRequestIdRef = useRef("");
   const query = useQuery({
     queryKey: ["briefing", id],
     queryFn: () => api.get<BriefingDetailType>(`/api/briefings/${id}`),
   });
   const backHref = safeBackHref(searchParams.get("from"));
+  const regenerate = useMutation({
+    mutationFn: () => api.post<TaskRun>(`/api/briefings/${id}/regenerate`, {
+      instruction: regenerateInstruction.trim(),
+      requestId: regenerateRequestIdRef.current ||= crypto.randomUUID(),
+    }),
+    onSuccess: (task) => {
+      regenerateRequestIdRef.current = "";
+      navigate(`/tasks/${task.id}`);
+    },
+  });
+  function closeRegenerateDialog() {
+    if (regenerate.isPending) return;
+    regenerateRequestIdRef.current = "";
+    setRegenerateInstruction("");
+    setRegenerateOpen(false);
+    regenerate.reset();
+  }
+  const { dialogRef: regenerateDialogRef, rememberTrigger: rememberRegenerateTrigger } = useModalDialog<HTMLElement>(regenerateOpen, closeRegenerateDialog, regenerate.isPending);
+
+  function openRegenerateDialog(trigger: HTMLElement) {
+    regenerateRequestIdRef.current = crypto.randomUUID();
+    regenerate.reset();
+    rememberRegenerateTrigger(trigger);
+    setRegenerateOpen(true);
+  }
 
   if (query.isPending) return <div className="detail-skeleton" role="status" aria-label="正在加载报告" />;
   if (query.error instanceof ApiError && query.error.status === 404) {
@@ -101,38 +143,50 @@ export function BriefingDetail() {
           <span className={`kind-tag ${report.kind}`}>{kindLabels[report.kind]}</span>
           <time dateTime={report.createdAt}>{new Date(report.createdAt).toLocaleString("zh-CN")}</time>
           <span>报告收录{report.itemCount}条情报</span>
+          {report.seriesId && <span>v{report.versionNumber ?? 1}</span>}
         </div>
         <h2>{report.title}</h2>
         {(report.periodStart || report.periodEnd) && (
           <p className="report-period">覆盖时间：{report.periodStart ? new Date(report.periodStart).toLocaleDateString("zh-CN") : "未指定"}—{report.periodEnd ? new Date(report.periodEnd).toLocaleDateString("zh-CN") : "未指定"}</p>
         )}
-        <div className="report-actions"><button onClick={copySummary}><Copy size={17} />复制摘要</button><button onClick={downloadMarkdown}><Download size={17} />导出Markdown</button></div>
+        <div className="report-actions"><button onClick={copySummary}><Copy size={17} />复制摘要</button><button aria-label="导出Markdown" onClick={downloadMarkdown}><Download size={17} /><span className="report-action-full">导出Markdown</span><span className="report-action-short">导出MD</span></button>{report.traceAvailable && <button className="report-regenerate" onClick={(event) => openRegenerateDialog(event.currentTarget)}><RefreshCw size={17} />重新生成</button>}</div>
         {actionNotice && <div className={`report-action-notice ${actionNotice.tone}`} role={actionNotice.tone === "error" ? "alert" : "status"}>{actionNotice.text}</div>}
-        <p className="report-body">{report.content}</p>
+        {report.citationStatus === "valid" && <div className="citation-state valid"><CheckCircle2 size={17} />来源编号已校验</div>}
+        {report.citationStatus === "warning" && <details className="citation-warning-details"><summary><AlertTriangle size={17} />有{report.citationWarnings?.length ?? 0}条来源未在正文中引用</summary><ul>{report.citationWarnings?.map((warning) => <li key={warning}>{warning}</li>)}</ul></details>}
+        <p className="report-body">{reportContent(report.content, report.sourceItems.length)}</p>
       </div>
+      {(report.versions?.length ?? 0) > 1 && <nav className="report-versions" aria-label="报告版本"><span>版本</span>{report.versions?.map((version) => version.id === report.id ? <strong key={version.id}>v{version.versionNumber ?? 1}</strong> : <Link key={version.id} href={`/reports/${version.id}`}>v{version.versionNumber ?? 1}</Link>)}</nav>}
       <section className="lineage-section" aria-labelledby="sources-heading">
         <div className="lineage-heading">
           <GitBranch size={19} />
           <h2 id="sources-heading">来源情报</h2>
           <span className="source-count">{report.sourceItems.length}条</span>
-          {report.publication && <Link className="trace-link" href={`/traces/${report.publication.id}`}>查看生成链路</Link>}
+          {report.publication && <Link className="trace-link" href={`/traces/${report.publication.id}?from=${encodeURIComponent(`/reports/${report.id}`)}`}>查看生成链路</Link>}
         </div>
         {report.traceAvailable ? (
           report.sourceItems.length ? <div className="source-list">
             {report.sourceItems.map((item) => {
-              const sourceUrl = safeSourceUrl(item.url);
-              return <article className="source-row" key={item.id}>
+              const sourceUrl = item.sourceUnavailable ? null : safeSourceUrl(item.url);
+              return <article className="source-row" id={`source-${item.ordinal + 1}`} key={item.id}>
                 <div>
-                  <Link className="source-title" href={`/items/${item.id}?from=${encodeURIComponent(`/reports/${report.id}`)}`}>{item.title}</Link>
-                  <p>{item.summary}</p>
-                  <span>{item.source} · {item.wasInserted ? "本次写入" : "复用已有情报"}{item.isInvalid ? " · 已标记无效" : ""}</span>
+                  <Link aria-label={item.title} className="source-title" href={`/items/${item.id}?from=${encodeURIComponent(`/reports/${report.id}`)}`}><span aria-hidden="true" className="citation-index">[{item.ordinal + 1}]</span>{item.title}</Link>
+                  <p>{item.summary || "暂无摘要"}</p>
+                  <span>{item.source.trim() || "来源未标注"} · {item.wasInserted ? "本次写入" : "复用已有情报"}{item.isInvalid ? " · 已标记无效" : ""}{item.sourceUnavailable ? " · 原文失效" : ""}</span>
                 </div>
-                {sourceUrl ? <a className="source-external" href={sourceUrl} target="_blank" rel="noreferrer"><ExternalLink size={16} />打开原文（新窗口）</a> : <span className="source-unavailable">原文链接不可用</span>}
+                {sourceUrl ? <a className="source-external" href={sourceUrl} target="_blank" rel="noreferrer"><ExternalLink size={16} />打开原文（新窗口）</a> : <span className="source-unavailable">{item.sourceUnavailable ? "原文已失效" : "原文链接不可用"}</span>}
               </article>;
             })}
           </div> : <p className="trace-empty">本报告没有关联来源情报</p>
         ) : <p className="trace-empty">历史数据，暂无完整追踪信息</p>}
       </section>
+      {regenerateOpen && <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeRegenerateDialog(); }}>
+        <section ref={regenerateDialogRef} className="dialog-panel report-create-dialog" role="dialog" aria-modal="true" aria-labelledby="report-regenerate-title">
+          <div className="dialog-heading"><h2 id="report-regenerate-title">重新生成v{(report.versionNumber ?? 1) + 1}</h2><button aria-label="关闭" disabled={regenerate.isPending} onClick={closeRegenerateDialog}><X size={18} /></button></div>
+          <label>调整要求<textarea data-autofocus maxLength={1000} rows={4} value={regenerateInstruction} onChange={(event) => setRegenerateInstruction(event.target.value)} placeholder="例如：压缩背景说明，重点比较分歧；留空则按默认方式重写。" /></label>
+          {regenerate.isError && <p className="dialog-error" role="alert">任务创建失败：{regenerate.error instanceof ApiError ? regenerate.error.message : "服务暂时不可用"}。调整要求已保留，可直接重试。</p>}
+          <div className="dialog-actions"><button className="secondary-button" disabled={regenerate.isPending} onClick={closeRegenerateDialog}>取消</button><button className="primary-button" disabled={regenerate.isPending} onClick={() => regenerate.mutate()}>{regenerate.isPending ? "正在创建" : regenerate.isError ? "重试生成" : "开始生成"}</button></div>
+        </section>
+      </div>}
     </article>
   );
 }

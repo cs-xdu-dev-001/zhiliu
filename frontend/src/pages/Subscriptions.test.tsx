@@ -11,6 +11,7 @@ vi.mock("../api", () => ({ api: { get, post, put, delete: remove } }));
 afterEach(cleanup);
 
 beforeEach(() => {
+  window.history.pushState({}, "", "/settings");
   get.mockReset().mockImplementation((url: string) => url.includes("/api/integrations/hermes") ? Promise.resolve({ baseUrl: "", apiKeyConfigured: false, apiKeyHint: null, status: "unconfigured", message: "请配置", checkedAt: null, version: null }) : Promise.resolve([]));
   post.mockReset().mockResolvedValue({});
   put.mockReset().mockResolvedValue({});
@@ -166,4 +167,31 @@ it("停用订阅需要明确确认", async () => {
   expect(screen.getByRole("alertdialog", { name: "暂停Agent论文周报" })).toBeVisible();
   await userEvent.click(screen.getByRole("button", { name: "确认暂停" }));
   expect(put).toHaveBeenCalledWith("/api/subscriptions/7", expect.objectContaining({ enabled: false }));
+});
+
+it("用独立视图切换订阅管理和Hermes运行设置", async () => {
+  get.mockImplementation((url: string) => url.includes("/api/integrations/hermes")
+    ? Promise.resolve({ baseUrl: "", apiKeyConfigured: false, apiKeyHint: null, status: "unconfigured", message: "请配置", checkedAt: null, version: null })
+    : Promise.resolve([{
+        id: 7, name: "Agent论文周报", kind: "paper", keywords: ["Agent"], schedule: "0 8 * * 1", prompt: "检索论文", enabled: true, lastRunAt: null, nextRunAt: null, createdAt: "2026-08-01T00:00:00Z", updatedAt: "2026-08-01T00:00:00Z",
+      }]));
+
+  render(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <Subscriptions />
+    </QueryClientProvider>,
+  );
+
+  expect(await screen.findByText("Agent论文周报")).toBeVisible();
+  expect(screen.queryByRole("heading", { name: "Hermes连接" })).not.toBeInTheDocument();
+
+  await userEvent.click(screen.getByRole("link", { name: "Hermes与运行" }));
+  expect(window.location.search).toBe("?view=runtime");
+  expect(await screen.findByRole("heading", { name: "Hermes连接" })).toBeVisible();
+  expect(screen.queryByText("Agent论文周报")).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "新建订阅" })).not.toBeInTheDocument();
+
+  await userEvent.click(screen.getByRole("link", { name: "订阅" }));
+  expect(window.location.search).toBe("");
+  expect(await screen.findByText("Agent论文周报")).toBeVisible();
 });

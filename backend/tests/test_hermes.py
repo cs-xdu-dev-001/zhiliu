@@ -85,6 +85,32 @@ async def test_execute_rejects_malformed_output() -> None:
             await client.execute("bad output")
 
 
+@pytest.mark.asyncio
+async def test_execute_does_not_expose_remote_error_details() -> None:
+    hermes = import_module("app.services.hermes")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST":
+            return httpx.Response(202, json={"run_id": "run_failed", "status": "started"})
+        return httpx.Response(
+            200,
+            json={"run_id": "run_failed", "status": "failed", "error": "Bearer secret-value"},
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+        client = hermes.HermesClient(
+            base_url="http://hermes.local",
+            api_key="test-key",
+            timeout_seconds=2,
+            poll_interval=0,
+            http_client=http_client,
+        )
+        with pytest.raises(hermes.HermesError, match="Hermes任务执行失败") as failure:
+            await client.execute("failed run")
+
+    assert "secret-value" not in str(failure.value)
+
+
 def test_item_fingerprint_normalizes_title_and_url() -> None:
     run_service = import_module("app.services.run_service")
 

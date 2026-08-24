@@ -1,4 +1,5 @@
 from collections.abc import Generator
+from contextlib import nullcontext
 
 import pytest
 from fastapi.testclient import TestClient
@@ -7,6 +8,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.db import Base, get_db
+from app.core.config import Settings
 from app.main import create_app
 from app.models import IntelligenceItem, Subscription, TaskRun
 
@@ -27,7 +29,11 @@ def db_session() -> Generator[Session, None, None]:
 
 @pytest.fixture
 def client(db_session: Session) -> Generator[TestClient, None, None]:
-    app = create_app(start_background_scheduler=False)
+    app = create_app(
+        start_background_scheduler=False,
+        settings=Settings(scheduler_enabled=False, demo_mode=False, _env_file=None),
+        mcp_session_factory=lambda: nullcontext(db_session),
+    )
 
     def override_db() -> Generator[Session, None, None]:
         yield db_session

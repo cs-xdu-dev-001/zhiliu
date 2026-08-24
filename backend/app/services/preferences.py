@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -36,6 +36,7 @@ class PreferenceService:
     ) -> tuple[HermesPreference, bool]:
         normalized_value = value.strip()
         normalized_note = note.strip()
+        self._deactivate_opposite(scope=scope, effect=effect, value=normalized_value, kind=kind)
         existing = self.db.scalar(
             select(HermesPreference).where(
                 HermesPreference.scope == scope,
@@ -74,6 +75,7 @@ class PreferenceService:
             )
             if existing is None:
                 raise
+            self._deactivate_opposite(scope=scope, effect=effect, value=normalized_value, kind=kind)
             existing.note = normalized_note
             existing.active = True
             self.db.commit()
@@ -81,6 +83,22 @@ class PreferenceService:
             return existing, False
         self.db.refresh(record)
         return record, True
+
+    def _deactivate_opposite(self, *, scope: str, effect: str, value: str, kind: str) -> None:
+        if effect not in {"prefer", "avoid"}:
+            return
+        self.db.execute(
+            update(HermesPreference)
+            .where(
+                HermesPreference.scope == scope,
+                HermesPreference.effect.in_(("prefer", "avoid")),
+                HermesPreference.effect != effect,
+                HermesPreference.value == value,
+                HermesPreference.kind == kind,
+                HermesPreference.active.is_(True),
+            )
+            .values(active=False)
+        )
 
     def remove(self, preference_id: int) -> HermesPreference:
         record = self.db.get(HermesPreference, preference_id)

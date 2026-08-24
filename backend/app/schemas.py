@@ -75,6 +75,10 @@ class ItemValidityUpdate(ApiModel):
     invalid: bool
 
 
+class ItemSourceAvailabilityUpdate(ApiModel):
+    unavailable: bool
+
+
 BulkItemAction = Literal["read", "unread", "save", "unsave", "ignore", "unignore", "invalidate", "restore"]
 
 
@@ -121,6 +125,8 @@ class IntelligenceItemResponse(ApiModel):
     is_saved: bool
     is_ignored: bool
     is_invalid: bool
+    is_stale: bool
+    source_unavailable: bool
     merged_into_id: int | None
     created_at: datetime
 
@@ -191,7 +197,31 @@ class BriefingResponse(ApiModel):
     item_count: int
     period_start: datetime | None
     period_end: datetime | None
+    series_id: str | None = None
+    version_number: int = 1
+    previous_version_id: int | None = None
+    generation_task_id: int | None = None
+    citation_status: Literal["unchecked", "valid", "warning"] = "unchecked"
+    citation_warnings: list[str] = Field(default_factory=list)
     created_at: datetime
+
+
+class BriefingGenerationRequest(ApiModel):
+    item_ids: list[int] = Field(min_length=1, max_length=20)
+    instruction: str = Field(default="", max_length=1000)
+    request_id: str = Field(min_length=8, max_length=160)
+
+    @field_validator("item_ids")
+    @classmethod
+    def clean_item_ids(cls, value: list[int]) -> list[int]:
+        if any(item_id <= 0 for item_id in value):
+            raise ValueError("情报ID必须为正整数")
+        return list(dict.fromkeys(value))
+
+
+class BriefingRegenerationRequest(ApiModel):
+    instruction: str = Field(default="", max_length=1000)
+    request_id: str = Field(min_length=8, max_length=160)
 
 
 class PublicationSummaryResponse(ApiModel):
@@ -213,12 +243,14 @@ class SourceItemResponse(ApiModel):
     ordinal: int
     was_inserted: bool
     is_invalid: bool = False
+    source_unavailable: bool = False
 
 
 class BriefingDetailResponse(BriefingResponse):
     source_items: list[SourceItemResponse]
     publication: PublicationSummaryResponse | None
     trace_available: bool
+    versions: list[BriefingResponse] = Field(default_factory=list)
 
 
 class TraceSubscriptionResponse(ApiModel):
@@ -347,6 +379,7 @@ class DashboardResponse(ApiModel):
 class TaskRunResponse(ApiModel):
     id: int
     subscription_id: int
+    retry_of_id: int | None = None
     hermes_run_id: str | None
     trace_id: str | None = None
     origin: str = "subscription-hermes"
@@ -397,6 +430,9 @@ class QualityPage(ApiModel):
     filtered_count: int
     duplicate_count: int
     restored_count: int
+    stale_count: int
+    low_importance_count: int
+    source_unavailable_count: int
 
 
 DashboardResponse.model_rebuild()

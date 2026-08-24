@@ -1,6 +1,6 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Bot, CheckCircle2, CircleDashed, Clock3, FileText, MessageCircle, Workflow, XCircle } from "lucide-react";
-import { Link, useParams } from "wouter";
+import { Link, useLocation, useParams } from "wouter";
 
 import { api, ApiError } from "../api";
 import { taskMessage, taskStageCopy, taskStatusMeta } from "../components/TaskRunCard";
@@ -16,10 +16,19 @@ const stageIcon = {
 
 export function TaskDetail() {
   const { id = "" } = useParams<{ id: string }>();
+  const [, navigate] = useLocation();
+  const queryClient = useQueryClient();
   const query = useQuery({
     queryKey: ["task-run", id],
     queryFn: () => api.get<TaskRun>(`/api/runs/${id}`),
     refetchInterval: (current) => current.state.data?.status === "queued" || current.state.data?.status === "running" ? 5000 : false,
+  });
+  const retry = useMutation({
+    mutationFn: () => api.post<TaskRun>(`/api/runs/${id}/retry`),
+    onSuccess: (nextRun) => {
+      queryClient.invalidateQueries({ queryKey: ["runs"] });
+      navigate(`/tasks/${nextRun.id}`);
+    },
   });
 
   if (query.isPending) return <div className="detail-skeleton" role="status" aria-label="正在加载任务详情" />;
@@ -33,6 +42,7 @@ export function TaskDetail() {
   const StatusIcon = status.icon;
   const StageIcon = stageIcon[run.stage] || Clock3;
   const from = encodeURIComponent(`/tasks/${run.id}`);
+  const requestLabel = run.origin === "weixin-hermes" ? "微信请求" : run.origin === "web-report" ? "报告要求" : "订阅任务";
 
   return (
     <article className="task-detail detail-page">
@@ -46,7 +56,7 @@ export function TaskDetail() {
       </header>
 
       <section className="task-detail-section">
-        <div className="task-detail-section-title"><MessageCircle size={18} /><h3>{run.origin === "weixin-hermes" ? "微信请求" : "订阅任务"}</h3></div>
+        <div className="task-detail-section-title"><MessageCircle size={18} /><h3>{requestLabel}</h3></div>
         <p>{run.requestSummary || "历史任务未保存请求摘要"}</p>
       </section>
 
@@ -56,22 +66,29 @@ export function TaskDetail() {
         <dl className="task-facts">
           <div><dt>开始时间</dt><dd>{new Date(run.startedAt).toLocaleString("zh-CN")}</dd></div>
           {run.finishedAt && <div><dt>完成时间</dt><dd>{new Date(run.finishedAt).toLocaleString("zh-CN")}</dd></div>}
-          {run.hermesRunId && <div><dt>Hermes任务ID</dt><dd>{run.hermesRunId}</dd></div>}
-          {run.traceId && <div><dt>追踪号</dt><dd>{run.traceId}</dd></div>}
+          {run.durationMs !== null && <div><dt>处理耗时</dt><dd>{(run.durationMs / 1000).toFixed(1)}秒</dd></div>}
+          {run.retryOfId && <div><dt>重试来源</dt><dd><Link href={`/tasks/${run.retryOfId}`}>任务#{run.retryOfId}</Link></dd></div>}
         </dl>
+        {(run.hermesRunId || run.traceId) && <details className="task-technical-details"><summary>技术信息</summary><dl>{run.hermesRunId && <div><dt>Hermes任务ID</dt><dd>{run.hermesRunId}</dd></div>}{run.traceId && <div><dt>追踪号</dt><dd>{run.traceId}</dd></div>}</dl></details>}
       </section>
 
       <section className="task-detail-section">
         <div className="task-detail-section-title"><FileText size={18} /><h3>知流结果</h3></div>
         {run.publicationId || run.briefingId ? <div className="detail-actions">
-            {run.publicationId && <Link href={`/traces/${run.publicationId}`}>查看完整处理链路</Link>}
+            {run.publicationId && <Link href={`/traces/${run.publicationId}?from=${encodeURIComponent(`/tasks/${run.id}`)}`}>查看完整处理链路</Link>}
             {run.briefingId && <Link href={`/reports/${run.briefingId}?from=${from}`}>查看生成报告</Link>}
           </div>
           : run.status === "failed" ? <div className="task-recovery">
               <p>{run.origin === "weixin-hermes"
                 ? "本次未写入知流。确认来源可访问后，可在微信重新发送请求。"
-                : "本次未写入知流。确认来源和Hermes连接后，可从订阅页重新执行。"}</p>
-              <Link className="secondary-link" href="/settings">检查订阅与Hermes连接</Link>
+                : run.origin === "web-report"
+                  ? "报告未生成。确认来源情报和Hermes连接后，可以重新执行。"
+                  : "本次未写入知流。确认来源和Hermes连接后，可从订阅页重新执行。"}</p>
+              <div className="task-recovery-actions">
+                {run.origin !== "weixin-hermes" && <button className="primary-compact" disabled={retry.isPending} onClick={() => retry.mutate()}>{retry.isPending ? "正在重新排队" : "重新执行"}</button>}
+                <Link className="secondary-link" href="/settings?view=runtime">检查订阅与Hermes连接</Link>
+              </div>
+              {retry.isError && <p className="form-error" role="alert">重新执行失败，请稍后重试。</p>}
             </div>
             : <p>结果尚未写入。任务完成后，这里会出现处理链路和报告入口。</p>}
       </section>

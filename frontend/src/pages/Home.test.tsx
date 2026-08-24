@@ -67,7 +67,7 @@ it("统计卡和内容卡进入对应筛选或详情", async () => {
   expect(screen.getByRole("heading", { name: "最近处理动态" })).toBeVisible();
   expect(screen.getByRole("link", { name: /整理Agent更新/ })).toHaveAttribute("href", "/tasks/7");
   expect(screen.getByText("Hermes正在理解、检索和整理")).toBeVisible();
-  expect(screen.getByRole("heading", { name: "需要处理" })).toBeVisible();
+  expect(screen.getByRole("region", { name: "需要处理" })).toBeVisible();
   expect(screen.getByRole("link", { name: /4个异常任务/ })).toHaveAttribute("href", "/tasks?status=failed");
   expect(document.querySelector(".home-content-grid")).toHaveClass("three-columns");
 });
@@ -93,7 +93,33 @@ it("Hermes异常时给出明确恢复入口", async () => {
 
   expect(await screen.findByText("Hermes授权无效")).toBeVisible();
   expect(screen.getByText("API密钥校验失败")).toBeVisible();
-  expect(screen.getByRole("link", { name: /检查Hermes连接/ })).toHaveAttribute("href", "/settings");
+  expect(screen.getByRole("link", { name: /去设置/ })).toHaveAttribute("href", "/settings?view=runtime");
+  expect(screen.queryByRole("region", { name: "需要处理" })).not.toBeInTheDocument();
+});
+
+it("Hermes暂时离线时不遮挡主要内容", async () => {
+  get.mockImplementation((path: string) => Promise.resolve(path === "/api/dashboard"
+    ? { ...dashboard, failedRuns: 0 }
+    : { ...connectedHermes, status: "unreachable", message: "连接超时" }));
+
+  renderHome();
+
+  expect(await screen.findByRole("link", { name: "Hermes离线" })).toHaveAttribute("href", "/settings?view=runtime");
+  expect(screen.queryByText("Hermes暂时无法访问")).not.toBeInTheDocument();
+  expect(document.querySelector(".home-connection-note")).not.toBeInTheDocument();
+  expect(screen.queryByRole("region", { name: "需要处理" })).not.toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "优先阅读" })).toBeVisible();
+});
+
+it("没有处理动态时仍在最新简报标题旁显示离线状态", async () => {
+  get.mockImplementation((path: string) => Promise.resolve(path === "/api/dashboard"
+    ? { ...dashboard, failedRuns: 0, recentRuns: [] }
+    : { ...connectedHermes, status: "unreachable", message: "连接超时" }));
+
+  renderHome();
+
+  expect(await screen.findByRole("link", { name: "Hermes离线" })).toHaveAttribute("href", "/settings?view=runtime");
+  expect(screen.getByRole("heading", { name: "最新简报" })).toBeVisible();
 });
 
 it("没有内容时直接提供可复制的微信指令", async () => {
@@ -110,7 +136,7 @@ it("没有内容时直接提供可复制的微信指令", async () => {
   expect(screen.getByRole("link", { name: "查看处理记录" })).toHaveAttribute("href", "/tasks");
   expect(screen.queryByText(/没有待阅读情报/)).not.toBeInTheDocument();
   expect(screen.queryByText(/还没有简报/)).not.toBeInTheDocument();
-  expect(screen.queryByRole("heading", { name: "需要处理" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("region", { name: "需要处理" })).not.toBeInTheDocument();
 });
 
 it("首页优先阅读只展示前两条", async () => {

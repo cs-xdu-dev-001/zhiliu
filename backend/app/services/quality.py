@@ -1,11 +1,23 @@
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Iterable
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models import HermesPublication, HermesQualityDecision, IntelligenceItem, PublicationItem
+
+LOW_IMPORTANCE_THRESHOLD = 0.4
+STALE_DAYS = {"news": 30, "job": 45}
+
+
+def stale_item_condition(now: datetime | None = None):
+    event_time = func.coalesce(IntelligenceItem.published_at, IntelligenceItem.created_at)
+    current = now or datetime.now(timezone.utc)
+    return or_(
+        and_(IntelligenceItem.kind == "news", event_time < current - timedelta(days=STALE_DAYS["news"])),
+        and_(IntelligenceItem.kind == "job", event_time < current - timedelta(days=STALE_DAYS["job"])),
+    )
 
 
 def record_quality_decisions(
@@ -22,6 +34,7 @@ def record_quality_decisions(
     filtered_sources = {value.casefold() for value in (filtered_sources or set())}
     for candidate in candidates:
         source = str(candidate.source)
+        importance = float(getattr(candidate, "importance", 0))
         normalized_url = normalize_url(str(candidate.url)).rstrip("/")
         fingerprint = item_fingerprint(str(candidate.title), normalized_url)
         item = db.scalar(select(IntelligenceItem).where(IntelligenceItem.fingerprint == fingerprint))
@@ -30,11 +43,19 @@ def record_quality_decisions(
             item_id = None
         elif item is not None and item.id in inserted_by_id:
             action = "inserted" if inserted_by_id[item.id] else "duplicate"
-            code = "accepted" if action == "inserted" else "duplicate_fingerprint"
-            reason = "通过质量检查并写入" if action == "inserted" else "标题和原始链接指纹已存在，复用已有情报"
+            if action == "inserted" and importance < LOW_IMPORTANCE_THRESHOLD:
+                code, reason = "low_importance", "重要性低于40分，已写入但降低展示优先级"
+            else:
+                code = "accepted" if action == "inserted" else "duplicate_fingerprint"
+                reason = "通过质量检查并写入" if action == "inserted" else "标题和原始链接指纹已存在，复用已有情报"
             item_id = item.id
         else:
-            action, code, reason, item_id = "accepted", "accepted", "通过质量检查", item.id if item else None
+            action, item_id = "accepted", item.id if item else None
+            code, reason = (
+                ("low_importance", "重要性低于40分，已保留但降低展示优先级")
+                if importance < LOW_IMPORTANCE_THRESHOLD
+                else ("accepted", "通过质量检查")
+            )
         db.add(
             HermesQualityDecision(
                 publication_id=publication.id,
@@ -48,7 +69,7 @@ def record_quality_decisions(
                 url=normalized_url,
                 source=source,
                 keywords_json=json.dumps(getattr(candidate, "keywords", []), ensure_ascii=False),
-                importance=float(getattr(candidate, "importance", 0)),
+                importance=importance,
             )
         )
 

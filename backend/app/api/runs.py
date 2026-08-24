@@ -2,10 +2,11 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import HermesPublication, Subscription, TaskRun
+from app.models import Briefing, HermesPublication, Subscription, TaskRun
 from app.schemas import TaskRunPage, TaskRunResponse
 
 router = APIRouter(prefix="/api", tags=["runs"])
@@ -19,6 +20,7 @@ def _task_run_response(
     return TaskRunResponse(
         id=record.id,
         subscription_id=record.subscription_id,
+        retry_of_id=record.retry_of_id,
         hermes_run_id=record.hermes_run_id,
         trace_id=record.trace_id,
         origin=record.origin,
@@ -105,6 +107,75 @@ def queue_subscription_run(
     db.commit()
     db.refresh(task)
     return serialize_task_run(db, task)
+
+
+@router.post(
+    "/runs/{run_id}/retry",
+    response_model=TaskRunResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def retry_failed_run(run_id: int, db: Session = Depends(get_db)) -> TaskRunResponse:
+    original = db.get(TaskRun, run_id)
+    if original is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务不存在")
+    if original.status != "failed":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="仅失败任务可以重新执行")
+    if original.origin == "weixin-hermes":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="微信任务请在微信中重新发送请求")
+    if original.origin == "web-report" and db.scalar(
+        select(Briefing.id).where(
+            Briefing.series_id == original.report_series_id,
+            Briefing.version_number == original.report_version_number,
+        )
+    ) is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="该版本报告已经生成")
+
+    existing_retry = db.scalar(
+        select(TaskRun).where(
+            TaskRun.retry_of_id == run_id,
+            TaskRun.status.in_(("queued", "running")),
+        )
+    )
+    if existing_retry is not None:
+        return serialize_task_run(db, existing_retry)
+
+    active = db.scalar(
+        select(TaskRun).where(
+            TaskRun.subscription_id == original.subscription_id,
+            TaskRun.status.in_(("queued", "running")),
+        )
+    )
+    if active is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="该订阅已有任务在执行")
+
+    retry = TaskRun(
+        subscription_id=original.subscription_id,
+        retry_of_id=original.id,
+        origin=original.origin,
+        topic=original.topic,
+        request_summary=original.request_summary,
+        status="queued",
+        stage="accepted",
+        report_item_ids_json=original.report_item_ids_json,
+        report_series_id=original.report_series_id,
+        report_version_number=original.report_version_number,
+    )
+    db.add(retry)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raced = db.scalar(
+            select(TaskRun).where(
+                TaskRun.retry_of_id == run_id,
+                TaskRun.status.in_(("queued", "running")),
+            )
+        )
+        if raced is not None:
+            return serialize_task_run(db, raced)
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="重试任务与现有任务冲突")
+    db.refresh(retry)
+    return serialize_task_run(db, retry)
 
 
 @router.get("/runs", response_model=TaskRunPage)

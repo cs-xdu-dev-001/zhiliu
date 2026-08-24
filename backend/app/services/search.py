@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func, or_, select, text
 from sqlalchemy.exc import DatabaseError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from app.models import Briefing, IntelligenceItem
 
@@ -106,7 +106,11 @@ class SearchService:
     ) -> SearchBundle:
         since = datetime.now(timezone.utc) - timedelta(days=days) if days else None
         item_filters = ["i.is_invalid = 0", "i.merged_into_id IS NULL"]
-        briefing_filters: list[str] = []
+        briefing_filters: list[str] = [
+            "(b.series_id IS NULL OR NOT EXISTS ("
+            "SELECT 1 FROM briefings newer WHERE newer.series_id = b.series_id "
+            "AND newer.version_number > b.version_number))"
+        ]
         params: dict[str, object] = {"expression": expression, "limit": limit}
         if kind:
             item_filters.append("i.kind = :kind")
@@ -170,7 +174,18 @@ class SearchService:
         limit: int,
     ) -> SearchBundle:
         item_filters = [IntelligenceItem.is_invalid.is_(False), IntelligenceItem.merged_into_id.is_(None)]
-        briefing_filters = []
+        newer_briefing = aliased(Briefing)
+        briefing_filters = [
+            or_(
+                Briefing.series_id.is_(None),
+                ~select(newer_briefing.id)
+                .where(
+                    newer_briefing.series_id == Briefing.series_id,
+                    newer_briefing.version_number > Briefing.version_number,
+                )
+                .exists(),
+            )
+        ]
         if kind:
             item_filters.append(IntelligenceItem.kind == kind)
             briefing_filters.append(Briefing.kind == kind)
