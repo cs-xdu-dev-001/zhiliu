@@ -548,6 +548,28 @@ button:disabled { cursor: wait; }
 .settings-view-tabs { flex: 0 0 auto; }
 .settings-toolbar { min-height: 44px; display: flex; justify-content: flex-end; align-items: center; gap: 10px; }
 .settings-support { display: grid; gap: 14px; }
+.data-export { display: grid; gap: 12px; max-width: 960px; padding: 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); }
+.data-export-head { min-height: 36px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.data-export-head h2 { margin: 0; font-size: 18px; }
+.data-export-head span { color: var(--muted); font-size: 13px; }
+.export-block { display: grid; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface-subtle); }
+.export-block > strong, .export-block-title > strong { font-size: 14px; color: var(--ink-soft); }
+.export-block-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.export-format { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.export-format button { min-height: 58px; display: grid; grid-template-columns: 22px auto 1fr; align-items: center; gap: 7px; padding: 0 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); color: var(--ink); font-weight: 750; text-align: left; }
+.export-format button span { justify-self: end; color: var(--muted); font-size: 13px; font-weight: 500; }
+.export-format button.active { border-color: var(--signal-border); background: var(--signal-soft); color: var(--signal); box-shadow: inset 0 0 0 1px var(--signal-border); }
+.export-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
+.export-filters label { display: grid; gap: 6px; color: var(--ink-soft); font-size: 13px; font-weight: 700; }
+.export-filters input, .export-filters select { width: 100%; min-height: 44px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 7px; background: var(--paper); color: var(--ink); font: inherit; }
+.export-sections { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; }
+.export-sections label { min-height: 42px; display: flex; align-items: center; gap: 7px; padding: 0 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--paper); color: var(--muted); cursor: pointer; }
+.export-sections label.selected { border-color: var(--signal-border); color: var(--signal); background: var(--signal-soft); font-weight: 700; }
+.export-sections input { position: absolute; opacity: 0; pointer-events: none; }
+.export-sections svg { opacity: 0; }
+.export-sections label.selected svg { opacity: 1; }
+.export-actions { min-height: 44px; display: flex; align-items: center; justify-content: flex-end; gap: 14px; }
+.export-status { color: var(--muted); }
 .diagnostics-section { display: grid; gap: 12px; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); }
 .diagnostics-heading { min-height: 44px; display: flex; align-items: center; gap: 10px; }
 .diagnostics-heading h2 { flex: 1; margin: 0; font-size: 17px; }
@@ -752,10 +774,18 @@ button:disabled { cursor: wait; }
   .subscription-tools > select { width: 112px; padding-left: 10px; }
   .subscription-filter-row { align-items: flex-start; flex-direction: column; }
   .settings-view-bar { align-items: stretch; flex-direction: column; gap: 8px; }
-  .settings-view-tabs { width: 100%; display: grid; grid-template-columns: 1fr 1.25fr; }
-  .settings-view-tabs a { justify-content: center; }
+  .settings-view-tabs { width: 100%; display: grid; grid-template-columns: .85fr 1.3fr 1fr; }
+  .settings-view-tabs a { min-width: 0; justify-content: center; padding-inline: 5px; font-size: 13px; }
   .settings-toolbar { width: 100%; justify-content: space-between; }
   .settings-toolbar .secondary-link, .settings-toolbar .primary-compact { flex: 1; }
+  .data-export, .export-block { min-width: 0; }
+  .data-export { width: 100%; padding: 12px; }
+  .data-export-head { align-items: flex-start; flex-direction: column; gap: 4px; }
+  .export-format, .export-filters { grid-template-columns: 1fr; }
+  .export-format button { min-width: 0; }
+  .export-sections { grid-template-columns: 1fr 1fr; }
+  .export-actions { align-items: stretch; flex-direction: column; }
+  .export-actions .primary-button { width: 100%; }
   .diagnostics-grid { grid-template-columns: 1fr; }
   .diagnostics-grid article:last-child:nth-child(odd) { grid-column: auto; }
   .diagnostics-grid article:nth-child(even), .diagnostics-grid > i:nth-child(even) { border-left: 0; }

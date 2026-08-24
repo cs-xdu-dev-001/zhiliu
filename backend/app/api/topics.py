@@ -68,6 +68,7 @@ def _summaries(db: Session, topics: list[Topic]) -> list[TopicSummary]:
 def list_topics(
     q: str | None = Query(default=None, max_length=120),
     state: Literal["followed", "pinned", "muted"] | None = None,
+    include_empty: bool = Query(default=False, alias="includeEmpty"),
     sort: Literal["signal", "latest", "name"] = "signal",
     limit: int = Query(default=30, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
@@ -81,7 +82,7 @@ def list_topics(
         filters.append(getattr(Topic, f"is_{state}").is_(True))
     topics = db.scalars(select(Topic).where(*filters)).all()
     summaries = _summaries(db, list(topics))
-    if not q and not state:
+    if not include_empty and not q and not state:
         summaries = [row for row in summaries if row.latest_at is not None or row.is_followed or row.is_pinned]
     if sort == "name":
         summaries.sort(key=lambda row: row.name.casefold())

@@ -27,6 +27,17 @@ def test_topic_list_detail_and_state(client: TestClient, db_session: Session, se
     assert updated.json()["isPinned"] is True
 
 
+def test_topic_list_can_include_empty_historical_topics(client: TestClient, db_session: Session) -> None:
+    empty = Topic(name="历史主题", normalized_name="历史主题")
+    db_session.add(empty)
+    db_session.commit()
+
+    assert all(row["id"] != empty.id for row in client.get("/api/topics").json()["items"])
+    response = client.get("/api/topics", params={"includeEmpty": "true", "sort": "name"})
+    assert response.status_code == 200
+    assert any(row["id"] == empty.id for row in response.json()["items"])
+
+
 def test_topic_merge_moves_item_links(client: TestClient, db_session: Session, seeded_item) -> None:
     source = ensure_topic(db_session, "LLM Agent")
     target = ensure_topic(db_session, "Agent")

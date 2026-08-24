@@ -20,6 +20,7 @@ from app.api.saved_views import router as saved_views_router
 from app.api.diagnostics import router as diagnostics_router
 from app.api.daily_attention import router as daily_attention_router
 from app.api.feedback import router as feedback_router
+from app.api.data_export import router as data_export_router
 from app.db import SessionLocal, get_db
 from app.api.topics import router as topics_router
 from app.core.config import get_settings
@@ -82,6 +83,7 @@ def create_app(
     application.include_router(topics_router)
     application.include_router(daily_attention_router)
     application.include_router(feedback_router)
+    application.include_router(data_export_router)
 
     @application.get("/api/health")
     def health(db: Session = Depends(get_db)) -> dict[str, str]:

@@ -192,6 +192,14 @@ test("阅读情报并触发订阅", async ({ page }, testInfo) => {
   await expect(page.getByRole("heading", { name: "Hermes连接" })).toBeVisible();
   await expect(page.getByRole("button", { name: "测试连接" })).toBeVisible();
   await capture(page, testInfo, "runtime-settings");
+  await page.getByRole("link", { name: "数据导出" }).click();
+  await expect(page).toHaveURL(/\/settings\?view=data$/);
+  await expect(page.getByRole("heading", { name: "数据导出", level: 1 })).toBeVisible();
+  await expect(page.getByText("不包含密钥、完整微信消息和内部地址")).toBeVisible();
+  await capture(page, testInfo, "data-export");
+  const exportDownload = page.waitForEvent("download");
+  await page.getByRole("button", { name: "生成导出文件" }).click();
+  expect((await exportDownload).suggestedFilename()).toMatch(/^zhiliu-export-\d{8}-\d{6}\.json$/);
   await page.getByRole("link", { name: "订阅" }).click();
   await expect(page).toHaveURL(/\/settings$/);
   const subscriptionName = `E2E测试订阅-${testInfo.project.name}`;
