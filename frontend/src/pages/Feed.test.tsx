@@ -357,6 +357,28 @@ it("可以把所选情报交给Hermes生成报告", async () => {
   expect(window.location.pathname).toBe("/tasks/31");
 });
 
+it("可以选择情报补充到已有报告并生成新版", async () => {
+  window.history.pushState({}, "", "/feed?report=7");
+  post.mockResolvedValueOnce({ id: 32 });
+  render(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <Feed />
+    </QueryClientProvider>,
+  );
+
+  expect(await screen.findByText("选择要补充到报告#7的情报")).toBeVisible();
+  await userEvent.click(screen.getByRole("button", { name: "批量选择" }));
+  await userEvent.click(screen.getByRole("checkbox", { name: "选择Agent框架发布新版本" }));
+  await userEvent.click(screen.getByRole("button", { name: "补充到报告" }));
+  await userEvent.type(screen.getByRole("textbox", { name: "整理要求" }), "加入新证据");
+  await userEvent.click(screen.getByRole("button", { name: "交给Hermes" }));
+
+  expect(post).toHaveBeenCalledWith("/api/briefings/7/regenerate", {
+    itemIds: [1], instruction: "加入新证据", requestId: expect.any(String),
+  });
+  expect(window.location.pathname).toBe("/tasks/32");
+});
+
 it("报告任务失败后重试沿用请求标识并恢复触发焦点", async () => {
   post.mockRejectedValue(new Error("服务暂时不可用"));
   render(

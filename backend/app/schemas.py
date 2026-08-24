@@ -276,6 +276,14 @@ class BriefingGenerationRequest(ApiModel):
 class BriefingRegenerationRequest(ApiModel):
     instruction: str = Field(default="", max_length=1000)
     request_id: str = Field(min_length=8, max_length=160)
+    item_ids: list[int] = Field(default_factory=list, max_length=20)
+
+    @field_validator("item_ids")
+    @classmethod
+    def clean_item_ids(cls, value: list[int]) -> list[int]:
+        if any(item_id <= 0 for item_id in value):
+            raise ValueError("情报ID必须为正整数")
+        return list(dict.fromkeys(value))
 
 
 class PublicationSummaryResponse(ApiModel):
@@ -298,13 +306,53 @@ class SourceItemResponse(ApiModel):
     was_inserted: bool
     is_invalid: bool = False
     source_unavailable: bool = False
+    is_cited: bool = False
+    evidence_status: Literal["traceable", "unreferenced", "source-unavailable", "invalid", "unsafe-link"] = "unreferenced"
+    evidence_message: str = "正文未引用该来源"
+
+
+class BriefingVersionSummaryResponse(ApiModel):
+    id: int
+    title: str
+    version_number: int
+    item_count: int
+    citation_status: Literal["unchecked", "valid", "warning"] = "unchecked"
+    created_at: datetime
+
+
+class BriefingVersionChangeResponse(ApiModel):
+    kind: Literal["added", "removed"]
+    text: str
+
+
+class BriefingSourceChangeResponse(ApiModel):
+    id: int
+    title: str
+
+
+class BriefingVersionDiffResponse(ApiModel):
+    previous_version_id: int
+    previous_version_number: int
+    title_changed: bool
+    instruction_changed: bool = False
+    previous_instruction: str = ""
+    current_instruction: str = ""
+    added_source_ids: list[int] = Field(default_factory=list)
+    removed_source_ids: list[int] = Field(default_factory=list)
+    added_sources: list[BriefingSourceChangeResponse] = Field(default_factory=list)
+    removed_sources: list[BriefingSourceChangeResponse] = Field(default_factory=list)
+    added_segment_count: int = 0
+    removed_segment_count: int = 0
+    changes: list[BriefingVersionChangeResponse] = Field(default_factory=list)
+    condensed: bool = False
 
 
 class BriefingDetailResponse(BriefingResponse):
     source_items: list[SourceItemResponse]
     publication: PublicationSummaryResponse | None
     trace_available: bool
-    versions: list[BriefingResponse] = Field(default_factory=list)
+    versions: list[BriefingVersionSummaryResponse] = Field(default_factory=list)
+    version_diff: BriefingVersionDiffResponse | None = None
 
 
 class TraceSubscriptionResponse(ApiModel):

@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bookmark, CheckCheck, ChevronLeft, ChevronRight, CircleX, EyeOff, FileText, ListChecks, Plus, Search, Tag, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { useLocation, useSearchParams } from "wouter";
+import { Link, useLocation, useSearchParams } from "wouter";
 
 import { api, ApiError } from "../api";
 import { EmptyState } from "../components/EmptyState";
@@ -51,6 +51,7 @@ export function Feed() {
   const rawDays = searchParams.get("days") ?? "";
   const source = (searchParams.get("source") ?? "").slice(0, 120);
   const rawPage = Number(searchParams.get("page") ?? "1");
+  const rawReportId = Number(searchParams.get("report") ?? "");
   const kind = allowedKinds.has(rawKind) ? rawKind : "";
   const validStates = [...new Set(rawStates.filter((value) => allowedStates.has(value)))];
   const states = rawStates.includes("all") ? [] : validStates.length ? validStates : ["unread"];
@@ -58,6 +59,7 @@ export function Feed() {
   const sort = allowedSorts.has(rawSort) ? rawSort : "importance";
   const days = allowedDays.has(rawDays) ? rawDays : "";
   const page = Number.isSafeInteger(rawPage) && rawPage > 0 ? rawPage : 1;
+  const supplementReportId = Number.isSafeInteger(rawReportId) && rawReportId > 0 ? rawReportId : null;
   const q = (searchParams.get("q") ?? "").slice(0, 200);
   const [searchDraft, setSearchDraft] = useState(q);
   const [notice, setNotice] = useState<{ tone: "success" | "error"; text: string; undoIgnoredId?: number; undoBulk?: BulkRequest; retryBulk?: BulkRequest } | null>(null);
@@ -94,6 +96,7 @@ export function Feed() {
     if (values.days) params.set("days", values.days);
     if (values.source) params.set("source", values.source);
     if (values.page > 1) params.set("page", String(values.page));
+    if (supplementReportId) params.set("report", String(supplementReportId));
     setSearchParams(params, { replace: true });
   }
 
@@ -189,11 +192,14 @@ export function Feed() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["saved-views"] }),
   });
   const generateReport = useMutation({
-    mutationFn: () => api.post<TaskRun>("/api/briefings/generate", {
-      itemIds: [...selected],
-      instruction: reportInstruction.trim(),
-      requestId: reportRequestIdRef.current ||= crypto.randomUUID(),
-    }),
+    mutationFn: () => api.post<TaskRun>(
+      supplementReportId ? `/api/briefings/${supplementReportId}/regenerate` : "/api/briefings/generate",
+      {
+        itemIds: [...selected],
+        instruction: reportInstruction.trim(),
+        requestId: reportRequestIdRef.current ||= crypto.randomUUID(),
+      },
+    ),
     onSuccess: (task) => {
       reportRequestIdRef.current = "";
       setReportOpen(false);
@@ -266,6 +272,7 @@ export function Feed() {
 
   return (
     <section className="stack-lg">
+      {supplementReportId && <div className="supplement-mode" role="status"><span>选择要补充到报告#{supplementReportId}的情报</span><Link href={`/reports/${supplementReportId}`}>取消</Link></div>}
       <div className="feed-tools">
         <label className="feed-search"><Search size={18} /><input type="search" aria-label="搜索情报" placeholder="搜索标题、摘要、来源或关键词" maxLength={200} value={searchDraft} onChange={(event) => setSearchDraft(event.target.value)} />{searchDraft && <button aria-label="清除搜索" onClick={() => setSearchDraft("")}><X size={17} /></button>}</label>
       </div>
@@ -310,7 +317,7 @@ export function Feed() {
               <details className="bulk-tag-menu"><summary aria-label="批量标签"><Tag size={17} /><span>标签</span></summary><div><input aria-label="批量标签内容" maxLength={200} placeholder="标签，用逗号分隔" value={tagDraft} onChange={(event) => setTagDraft(event.target.value)} /><button disabled={!tagDraft.trim() || selected.size === 0 || bulk.isPending} onClick={() => runBulk("tag", tagDraft.split(/[,，]/).map((value) => value.trim()).filter(Boolean))}>添加</button><button disabled={!tagDraft.trim() || selected.size === 0 || bulk.isPending} onClick={() => runBulk("untag", tagDraft.split(/[,，]/).map((value) => value.trim()).filter(Boolean))}>移除</button></div></details>
               <button aria-label={ignoredAction === "ignore" ? "归档所选" : "恢复所选归档"} disabled={selected.size === 0 || bulk.isPending} onClick={() => ignoredAction === "ignore" ? requestProtectedAction("ignore") : runBulk("unignore")}><EyeOff size={17} /><span className="bulk-label-full">{ignoredAction === "ignore" ? "归档所选" : "恢复归档"}</span><span className="bulk-label-short">{ignoredAction === "ignore" ? "归档" : "恢复"}</span></button>
               <button aria-label={invalidAction === "invalidate" ? "标记所选无效" : "恢复所选有效"} disabled={selected.size === 0 || bulk.isPending} onClick={() => invalidAction === "invalidate" ? requestProtectedAction("invalidate") : runBulk("restore")}><CircleX size={17} /><span className="bulk-label-full">{invalidAction === "invalidate" ? "标记所选无效" : "恢复所选有效"}</span><span className="bulk-label-short">{invalidAction === "invalidate" ? "无效" : "恢复"}</span></button>
-              <button aria-label="生成报告" className="bulk-report-button" disabled={selected.size === 0 || selected.size > 20 || bulk.isPending} onClick={(event) => openReportDialog(event.currentTarget)}><FileText size={17} /><span className="bulk-label-full">生成报告</span><span className="bulk-label-short">报告</span></button>
+              <button aria-label={supplementReportId ? "补充到报告" : "生成报告"} className="bulk-report-button" disabled={selected.size === 0 || selected.size > 20 || bulk.isPending} onClick={(event) => openReportDialog(event.currentTarget)}><FileText size={17} /><span className="bulk-label-full">{supplementReportId ? "补充到报告" : "生成报告"}</span><span className="bulk-label-short">{supplementReportId ? "补充" : "报告"}</span></button>
             </div>
           </>}
         </div>
@@ -330,7 +337,7 @@ export function Feed() {
       {query.data && query.data.total > PAGE_SIZE && <nav className="pagination" aria-label="情报分页"><button disabled={page <= 1} onClick={() => setView({ page: page - 1 })}><ChevronLeft size={17} />上一页</button><span>第{page}/{totalPages}页</span><button disabled={page >= totalPages} onClick={() => setView({ page: page + 1 })}>下一页<ChevronRight size={17} /></button></nav>}
       {reportOpen && <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeReportDialog(); }}>
         <section ref={reportDialogRef} className="dialog-panel report-create-dialog" role="dialog" aria-modal="true" aria-labelledby="report-create-title">
-          <div className="dialog-heading"><h2 id="report-create-title">用{selected.size}条情报生成报告</h2><button aria-label="关闭" disabled={generateReport.isPending} onClick={closeReportDialog}><X size={18} /></button></div>
+          <div className="dialog-heading"><h2 id="report-create-title">{supplementReportId ? `补充${selected.size}条来源并生成新版` : `用${selected.size}条情报生成报告`}</h2><button aria-label="关闭" disabled={generateReport.isPending} onClick={closeReportDialog}><X size={18} /></button></div>
           <label>整理要求<textarea data-autofocus maxLength={1000} rows={4} value={reportInstruction} onChange={(event) => setReportInstruction(event.target.value)} placeholder="例如：比较共同趋势，说明对研究工作的影响；留空则由Hermes自行组织。" /></label>
           <p className="dialog-error" role="alert">{generateReport.isError ? `创建失败：${generateReport.error instanceof ApiError ? generateReport.error.message : "服务暂时不可用"}。所选内容已保留，可直接重试。` : ""}</p>
           <div className="dialog-actions"><button className="secondary-button" disabled={generateReport.isPending} onClick={closeReportDialog}>取消</button><button className="primary-button" disabled={generateReport.isPending} onClick={() => generateReport.mutate()}>{generateReport.isPending ? "正在创建" : generateReport.isError ? "重试创建" : "交给Hermes"}</button></div>

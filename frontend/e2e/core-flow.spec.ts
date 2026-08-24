@@ -464,6 +464,59 @@ test("查看质量记录和订阅健康", async ({ page }, testInfo) => {
   await capture(page, testInfo, "subscription-health");
 });
 
+test("报告版本差异和逐条引用证据保持可核验", async ({ page }, testInfo) => {
+  await page.route("**/api/briefings/777", (route) => route.fulfill({ json: {
+    id: 777, subscriptionId: 1, title: "Agent研究更新", kind: "news", content: "新结论[1]，待补证据。",
+    itemCount: 2, periodStart: null, periodEnd: null, seriesId: "series-evidence", versionNumber: 2,
+    previousVersionId: 776, generationTaskId: 91, citationStatus: "warning",
+    citationWarnings: ["来源[2]未在正文中引用"], createdAt: "2026-08-24T08:00:00Z",
+    traceAvailable: true,
+    publication: { id: 77, traceId: "trace-evidence", origin: "web-report", requestSummary: "压缩背景并补充证据", createdAt: "2026-08-24T08:00:00Z", hermesRunId: "hermes-evidence", taskRunId: 91 },
+    sourceItems: [
+      { id: 701, title: "已引用来源", summary: "可追溯来源", source: "Example", url: "https://example.com/one", ordinal: 0, wasInserted: false, isInvalid: false, sourceUnavailable: false, isCited: true, evidenceStatus: "traceable", evidenceMessage: "正文编号可追溯至原始链接和写入记录" },
+      { id: 702, title: "未引用来源", summary: "尚未进入正文", source: "Example", url: "https://example.com/two", ordinal: 1, wasInserted: false, isInvalid: false, sourceUnavailable: false, isCited: false, evidenceStatus: "unreferenced", evidenceMessage: "正文未引用该来源" },
+    ],
+    versions: [
+      { id: 777, title: "Agent研究更新", versionNumber: 2, itemCount: 2, citationStatus: "warning", createdAt: "2026-08-24T08:00:00Z" },
+      { id: 776, title: "Agent研究", versionNumber: 1, itemCount: 1, citationStatus: "valid", createdAt: "2026-08-23T08:00:00Z" },
+    ],
+    versionDiff: { previousVersionId: 776, previousVersionNumber: 1, titleChanged: true, instructionChanged: true, previousInstruction: "完整展开", currentInstruction: "压缩背景并补充证据", addedSourceIds: [702], removedSourceIds: [], addedSources: [{ id: 702, title: "未引用来源" }], removedSources: [], addedSegmentCount: 1, removedSegmentCount: 1, changes: [{ kind: "removed", text: "旧结论" }, { kind: "added", text: "新结论[1]，待补证据。" }], condensed: false },
+  } }));
+
+  await page.goto("/reports/777");
+  await expect(page.getByText("引用编号完整且可追溯，不代表事实已外部核验")).toHaveCount(0);
+  await expect(page.getByText("有1条来源未在正文中引用")).toBeVisible();
+  await expect(page.getByRole("link", { name: "查看来源1" })).toHaveAttribute("href", "#source-1");
+  await page.getByRole("link", { name: "查看来源1" }).click();
+  await expect(page).toHaveURL(/#source-1$/);
+  await expect(page.getByText(/可追溯 · 正文编号可追溯/)).toBeVisible();
+  await expect(page.getByText(/未引用 · 正文未引用/)).toBeVisible();
+  await expect(page.getByRole("heading", { name: "相较v1" })).toBeVisible();
+  await expect(page.getByText("压缩背景并补充证据")).toBeVisible();
+  await page.getByText("查看正文变化").click();
+  await expect(page.getByText("旧结论")).toBeVisible();
+  await capture(page, testInfo, "report-version-evidence");
+});
+
+test("可从情报流为现有报告补充来源", async ({ page }) => {
+  let payload: Record<string, unknown> | null = null;
+  await page.route("**/api/briefings/1/regenerate", (route) => {
+    payload = route.request().postDataJSON();
+    return route.fulfill({ status: 202, json: { id: 9991 } });
+  });
+  await page.goto("/feed?report=1");
+  await expect(page.getByText("选择要补充到报告#1的情报")).toBeVisible();
+  await page.getByRole("button", { name: "批量选择" }).click();
+  await page.getByRole("checkbox", { name: /^选择/ }).first().check();
+  await page.getByRole("button", { name: "补充到报告" }).click();
+  await page.getByRole("textbox", { name: "整理要求" }).fill("补充新来源后重写结论");
+  await page.getByRole("button", { name: "交给Hermes" }).click();
+
+  await expect(page).toHaveURL(/\/tasks\/9991$/);
+  expect(payload).toMatchObject({ instruction: "补充新来源后重写结论" });
+  expect(Array.isArray(payload?.itemIds)).toBe(true);
+});
+
 test("任务列表限制长错误摘要高度", async ({ page }, testInfo) => {
   const longError = "Hermes返回连接错误：" + "上游服务暂时不可用，正在等待网络恢复。".repeat(20);
   await page.route("**/api/runs?*", (route) => route.fulfill({

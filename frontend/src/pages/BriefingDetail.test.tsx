@@ -24,7 +24,8 @@ const briefing = {
   },
   sourceItems: [{
     id: 9, title: "Agent框架发布新版本", summary: "工具调用可靠性提升。", source: "Example",
-    url: "https://example.com/agent", ordinal: 0, wasInserted: true,
+    url: "https://example.com/agent", ordinal: 0, wasInserted: true, isInvalid: false, sourceUnavailable: false,
+    isCited: true, evidenceStatus: "traceable" as const, evidenceMessage: "正文编号可追溯至原始链接和写入记录",
   }],
 };
 
@@ -71,6 +72,7 @@ it("展示准确来源情报和独立原文链接", async () => {
   expect(screen.getByRole("link", { name: "Agent框架发布新版本" })).toHaveAttribute("href", "/items/9?from=%2Freports%2F1");
   expect(screen.getByRole("link", { name: "打开原文（新窗口）" })).toHaveAttribute("href", "https://example.com/agent");
   expect(screen.getByRole("link", { name: "查看生成链路" })).toHaveAttribute("href", "/traces/7?from=%2Freports%2F1");
+  expect(screen.getByRole("link", { name: "补充来源" })).toHaveAttribute("href", "/feed?report=1");
   expect(screen.getByText("1条")).toBeVisible();
 });
 
@@ -97,10 +99,11 @@ it("历史报告明确显示暂无追踪", async () => {
 });
 
 it("拒绝非HTTP来源链接", async () => {
-  get.mockResolvedValue({ ...briefing, sourceItems: [{ ...briefing.sourceItems[0], url: "javascript:alert(1)" }] });
+  get.mockResolvedValue({ ...briefing, sourceItems: [{ ...briefing.sourceItems[0], url: "javascript:alert(1)", evidenceStatus: "unsafe-link", evidenceMessage: "原始链接格式不可信，已停用外链" }] });
   renderPage();
 
-  expect(await screen.findByText("原文链接不可用")).toBeVisible();
+  expect(await screen.findByText("链接停用 · 原始链接格式不可信，已停用外链")).toBeVisible();
+  expect(screen.getByText("原文不可用")).toBeVisible();
   expect(screen.queryByRole("link", { name: "打开原文（新窗口）" })).not.toBeInTheDocument();
 });
 
@@ -119,11 +122,11 @@ it("加载时向辅助技术说明状态", () => {
 });
 
 it("来源已标记失效时停用报告中的原文外链", async () => {
-  get.mockResolvedValue({ ...briefing, sourceItems: [{ ...briefing.sourceItems[0], sourceUnavailable: true }] });
+  get.mockResolvedValue({ ...briefing, sourceItems: [{ ...briefing.sourceItems[0], sourceUnavailable: true, evidenceStatus: "source-unavailable", evidenceMessage: "原始来源已标记失效" }] });
   renderPage();
 
-  expect(await screen.findByText("原文已失效", { exact: true })).toBeVisible();
-  expect(screen.getByText(/Example · 本次写入 · 原文失效/)).toBeVisible();
+  expect(await screen.findByText("来源失效 · 原始来源已标记失效")).toBeVisible();
+  expect(screen.getByText("原文不可用")).toBeVisible();
   expect(screen.queryByRole("link", { name: "打开原文（新窗口）" })).not.toBeInTheDocument();
 });
 
@@ -143,7 +146,7 @@ it("展示引用和版本，并可重新生成", async () => {
   renderPage();
 
   expect(await screen.findByRole("link", { name: "查看来源1" })).toHaveAttribute("href", "#source-1");
-  expect(screen.getByText("来源编号已校验")).toBeVisible();
+  expect(screen.getByText("引用编号完整且可追溯，不代表事实已外部核验")).toBeVisible();
   expect(screen.getByRole("navigation", { name: "报告版本" })).toHaveTextContent("v2");
   await userEvent.click(screen.getByRole("button", { name: "重新生成" }));
   await userEvent.type(screen.getByRole("textbox", { name: "调整要求" }), "更精炼");
@@ -154,6 +157,37 @@ it("展示引用和版本，并可重新生成", async () => {
     requestId: expect.any(String),
   });
   expect(window.location.pathname).toBe("/tasks/42");
+});
+
+it("清楚展示相邻版本的正文和来源变化", async () => {
+  get.mockResolvedValue({
+    ...briefing,
+    id: 2,
+    seriesId: "series-1",
+    versionNumber: 2,
+    versions: [
+      { id: 2, title: briefing.title, versionNumber: 2, itemCount: 3, citationStatus: "valid", createdAt: briefing.createdAt },
+      { id: 1, title: "上一版", versionNumber: 1, itemCount: 2, citationStatus: "warning", createdAt: briefing.createdAt },
+    ],
+    versionDiff: {
+      previousVersionId: 1, previousVersionNumber: 1, titleChanged: true,
+      instructionChanged: true, previousInstruction: "完整展开", currentInstruction: "压缩背景",
+      addedSourceIds: [9], removedSourceIds: [8], addedSegmentCount: 2, removedSegmentCount: 1,
+      addedSources: [{ id: 9, title: "新增论文" }], removedSources: [{ id: 8, title: "移除旧闻" }],
+      changes: [{ kind: "removed", text: "旧结论" }, { kind: "added", text: "新结论" }], condensed: false,
+    },
+  });
+  renderPage();
+
+  expect(await screen.findByRole("heading", { name: "相较v1" })).toBeVisible();
+  expect(screen.getByText("来源+1/-1")).toBeVisible();
+  expect(screen.getByText("压缩背景")).toBeVisible();
+  expect(screen.getByRole("link", { name: "新增论文" })).toHaveAttribute("href", "/items/9?from=%2Freports%2F2");
+  expect(screen.getByRole("link", { name: "移除旧闻" })).toHaveAttribute("href", "/items/8?from=%2Freports%2F2");
+  await userEvent.click(screen.getByText("查看正文变化"));
+  expect(screen.getByText("旧结论")).toHaveClass("removed");
+  expect(screen.getByText("新结论")).toHaveClass("added");
+  expect(screen.getByRole("link", { name: "查看上一版" })).toHaveAttribute("href", "/reports/1");
 });
 
 it("重新生成失败后保留要求、沿用请求标识并恢复焦点", async () => {

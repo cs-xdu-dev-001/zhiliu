@@ -1,10 +1,13 @@
 import hashlib
 import inspect
 import json
+import math
 import re
 import time
 from collections import Counter
 from datetime import datetime, timezone
+from difflib import SequenceMatcher
+from urllib.parse import urlsplit
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -14,6 +17,9 @@ from app.services.hermes import HermesClient, HermesInvalidOutput, HermesTimeout
 from app.services.run_service import canonical_item
 
 _CITATION_PATTERN = re.compile(r"\[(\d+)]")
+_MAX_DIFF_SEGMENTS = 400
+_MAX_VISIBLE_CHANGES = 8
+_MAX_CHANGE_LENGTH = 280
 
 
 def build_report_prompt(items: list[IntelligenceItem], instruction: str) -> str:
@@ -39,13 +45,95 @@ def build_report_prompt(items: list[IntelligenceItem], instruction: str) -> str:
 
 
 def validate_citations(content: str, source_count: int) -> tuple[str, list[str]]:
-    citations = [int(value) for value in _CITATION_PATTERN.findall(content)]
+    citations = citation_numbers(content)
     invalid = sorted({value for value in citations if value < 1 or value > source_count})
     if invalid:
         raise HermesInvalidOutput(f"报告包含不存在的来源编号：{', '.join(map(str, invalid))}")
     missing = [value for value in range(1, source_count + 1) if value not in citations]
     warnings = [f"来源[{value}]未在正文中引用" for value in missing]
     return ("warning" if warnings else "valid"), warnings
+
+
+def citation_numbers(content: str) -> list[int]:
+    return [int(value) for value in _CITATION_PATTERN.findall(content)]
+
+
+def source_evidence_status(
+    *,
+    citation_number: int,
+    cited_numbers: set[int],
+    url: str,
+    is_invalid: bool,
+    source_unavailable: bool,
+) -> tuple[str, str]:
+    if is_invalid:
+        return "invalid", "关联情报已标记无效"
+    if source_unavailable:
+        return "source-unavailable", "原始来源已标记失效"
+    try:
+        parsed = urlsplit(url)
+        safe_link = parsed.scheme.casefold() in {"http", "https"} and bool(parsed.hostname)
+    except ValueError:
+        safe_link = False
+    if not safe_link:
+        return "unsafe-link", "原始链接格式不可信，已停用外链"
+    if citation_number not in cited_numbers:
+        return "unreferenced", "正文未引用该来源"
+    return "traceable", "正文编号可追溯至原始链接和写入记录"
+
+
+def _bounded_segments(content: str) -> tuple[list[str], bool]:
+    raw = [line.strip() for line in content.splitlines() if line.strip()]
+    if not raw and content.strip():
+        raw = [content.strip()]
+    if len(raw) <= _MAX_DIFF_SEGMENTS:
+        return raw, False
+    chunk_size = math.ceil(len(raw) / _MAX_DIFF_SEGMENTS)
+    return [" ".join(raw[index:index + chunk_size]) for index in range(0, len(raw), chunk_size)], True
+
+
+def build_version_diff(
+    previous: Briefing,
+    current: Briefing,
+    previous_source_ids: list[int],
+    current_source_ids: list[int],
+    previous_instruction: str = "",
+    current_instruction: str = "",
+) -> dict[str, object]:
+    before, before_condensed = _bounded_segments(previous.content)
+    after, after_condensed = _bounded_segments(current.content)
+    matcher = SequenceMatcher(a=before, b=after, autojunk=False)
+    changes: list[dict[str, str]] = []
+    added_count = 0
+    removed_count = 0
+    for tag, first_start, first_end, second_start, second_end in matcher.get_opcodes():
+        if tag == "equal":
+            continue
+        removed_count += first_end - first_start
+        added_count += second_end - second_start
+        for kind, values in (("removed", before[first_start:first_end]), ("added", after[second_start:second_end])):
+            for value in values:
+                if len(changes) >= _MAX_VISIBLE_CHANGES:
+                    break
+                text = value if len(value) <= _MAX_CHANGE_LENGTH else f"{value[:_MAX_CHANGE_LENGTH].rstrip()}…"
+                changes.append({"kind": kind, "text": text})
+
+    previous_set = set(previous_source_ids)
+    current_set = set(current_source_ids)
+    return {
+        "previous_version_id": previous.id,
+        "previous_version_number": previous.version_number,
+        "title_changed": previous.title != current.title,
+        "instruction_changed": previous_instruction != current_instruction,
+        "previous_instruction": previous_instruction,
+        "current_instruction": current_instruction,
+        "added_source_ids": [item_id for item_id in current_source_ids if item_id not in previous_set],
+        "removed_source_ids": [item_id for item_id in previous_source_ids if item_id not in current_set],
+        "added_segment_count": added_count,
+        "removed_segment_count": removed_count,
+        "changes": changes,
+        "condensed": before_condensed or after_condensed or added_count + removed_count > len(changes),
+    }
 
 
 class ReportService:

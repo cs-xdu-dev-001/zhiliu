@@ -41,12 +41,12 @@ function reportContent(content: string, sourceCount: number) {
 function reportMarkdown(report: BriefingDetailType) {
   const sources = report.sourceItems.length
     ? report.sourceItems.map((item, index) => {
-        const sourceUrl = item.sourceUnavailable ? null : safeSourceUrl(item.url);
+        const sourceUrl = item.evidenceStatus === "traceable" || item.evidenceStatus === "unreferenced" ? safeSourceUrl(item.url) : null;
         const source = item.source.trim() || "来源未标注";
         const title = markdownText(item.title);
         return sourceUrl
           ? `${index + 1}. [${title}](<${sourceUrl}>) — ${source}`
-          : `${index + 1}. ${title} — ${source}（${item.sourceUnavailable ? "原文已失效" : "原文链接不可用"}）`;
+          : `${index + 1}. ${title} — ${source}（${item.evidenceMessage}）`;
       }).join("\n")
     : "暂无可追溯来源";
   return `# ${report.title}\n\n- 类型：${kindLabels[report.kind]}\n- 生成时间：${new Date(report.createdAt).toLocaleString("zh-CN")}\n- 来源情报：${report.sourceItems.length}条\n\n${report.content.trim()}\n\n## 来源情报\n\n${sources}\n`;
@@ -149,13 +149,29 @@ export function BriefingDetail() {
         {(report.periodStart || report.periodEnd) && (
           <p className="report-period">覆盖时间：{report.periodStart ? new Date(report.periodStart).toLocaleDateString("zh-CN") : "未指定"}—{report.periodEnd ? new Date(report.periodEnd).toLocaleDateString("zh-CN") : "未指定"}</p>
         )}
-        <div className="report-actions"><button onClick={copySummary}><Copy size={17} />复制摘要</button><button aria-label="导出Markdown" onClick={downloadMarkdown}><Download size={17} /><span className="report-action-full">导出Markdown</span><span className="report-action-short">导出MD</span></button>{report.traceAvailable && <button className="report-regenerate" onClick={(event) => openRegenerateDialog(event.currentTarget)}><RefreshCw size={17} />重新生成</button>}</div>
+        <div className="report-actions"><button onClick={copySummary}><Copy size={17} />复制摘要</button><button aria-label="导出Markdown" onClick={downloadMarkdown}><Download size={17} /><span className="report-action-full">导出Markdown</span><span className="report-action-short">导出MD</span></button>{report.traceAvailable && <><Link className="report-add-sources" href={`/feed?report=${report.id}`}>补充来源</Link><button className="report-regenerate" onClick={(event) => openRegenerateDialog(event.currentTarget)}><RefreshCw size={17} />重新生成</button></>}</div>
         {actionNotice && <div className={`report-action-notice ${actionNotice.tone}`} role={actionNotice.tone === "error" ? "alert" : "status"}>{actionNotice.text}</div>}
-        {report.citationStatus === "valid" && <div className="citation-state valid"><CheckCircle2 size={17} />来源编号已校验</div>}
+        {report.citationStatus === "valid" && <div className="citation-state valid"><CheckCircle2 size={17} />引用编号完整且可追溯，不代表事实已外部核验</div>}
         {report.citationStatus === "warning" && <details className="citation-warning-details"><summary><AlertTriangle size={17} />有{report.citationWarnings?.length ?? 0}条来源未在正文中引用</summary><ul>{report.citationWarnings?.map((warning) => <li key={warning}>{warning}</li>)}</ul></details>}
         <p className="report-body">{reportContent(report.content, report.sourceItems.length)}</p>
       </div>
       {(report.versions?.length ?? 0) > 1 && <nav className="report-versions" aria-label="报告版本"><span>版本</span>{report.versions?.map((version) => version.id === report.id ? <strong key={version.id}>v{version.versionNumber ?? 1}</strong> : <Link key={version.id} href={`/reports/${version.id}`}>v{version.versionNumber ?? 1}</Link>)}</nav>}
+      {report.versionDiff && <section className="version-diff" aria-labelledby="version-diff-heading">
+        <div className="version-diff-heading"><h2 id="version-diff-heading">相较v{report.versionDiff.previousVersionNumber}</h2><Link href={`/reports/${report.versionDiff.previousVersionId}`}>查看上一版</Link></div>
+        <div className="version-diff-facts">
+          {report.versionDiff.titleChanged && <span>标题已调整</span>}
+          {report.versionDiff.instructionChanged && <span>整理要求已调整</span>}
+          <span>新增{report.versionDiff.addedSegmentCount}段</span>
+          <span>删去{report.versionDiff.removedSegmentCount}段</span>
+          <span>来源+{report.versionDiff.addedSourceIds.length}/-{report.versionDiff.removedSourceIds.length}</span>
+        </div>
+        {report.versionDiff.instructionChanged && <div className="instruction-diff"><p><span>上一版</span>{report.versionDiff.previousInstruction || "默认整理要求"}</p><p><span>当前版</span>{report.versionDiff.currentInstruction || "默认整理要求"}</p></div>}
+        {(report.versionDiff.addedSources.length > 0 || report.versionDiff.removedSources.length > 0) && <div className="source-diff-list">
+          {report.versionDiff.addedSources.map((source) => <p className="added" key={`added-${source.id}`}><span>新增来源</span><Link href={`/items/${source.id}?from=${encodeURIComponent(`/reports/${report.id}`)}`}>{source.title}</Link></p>)}
+          {report.versionDiff.removedSources.map((source) => <p className="removed" key={`removed-${source.id}`}><span>移除来源</span><Link href={`/items/${source.id}?from=${encodeURIComponent(`/reports/${report.id}`)}`}>{source.title}</Link></p>)}
+        </div>}
+        {report.versionDiff.changes.length > 0 && <details><summary>查看正文变化</summary><div className="version-change-list">{report.versionDiff.changes.map((change, index) => <p className={change.kind} key={`${change.kind}-${index}`}><span>{change.kind === "added" ? "+" : "−"}</span>{change.text}</p>)}</div>{report.versionDiff.condensed && <p className="version-diff-note">长报告仅展示前8处变化，统计包含全部段落。</p>}</details>}
+      </section>}
       <section className="lineage-section" aria-labelledby="sources-heading">
         <div className="lineage-heading">
           <GitBranch size={19} />
@@ -166,14 +182,22 @@ export function BriefingDetail() {
         {report.traceAvailable ? (
           report.sourceItems.length ? <div className="source-list">
             {report.sourceItems.map((item) => {
-              const sourceUrl = item.sourceUnavailable ? null : safeSourceUrl(item.url);
+              const sourceUrl = item.evidenceStatus === "traceable" || item.evidenceStatus === "unreferenced" ? safeSourceUrl(item.url) : null;
+              const evidenceLabel = {
+                traceable: "可追溯",
+                unreferenced: "未引用",
+                "source-unavailable": "来源失效",
+                invalid: "情报无效",
+                "unsafe-link": "链接停用",
+              }[item.evidenceStatus];
               return <article className="source-row" id={`source-${item.ordinal + 1}`} key={item.id}>
                 <div>
                   <Link aria-label={item.title} className="source-title" href={`/items/${item.id}?from=${encodeURIComponent(`/reports/${report.id}`)}`}><span aria-hidden="true" className="citation-index">[{item.ordinal + 1}]</span>{item.title}</Link>
                   <p>{item.summary || "暂无摘要"}</p>
-                  <span>{item.source.trim() || "来源未标注"} · {item.wasInserted ? "本次写入" : "复用已有情报"}{item.isInvalid ? " · 已标记无效" : ""}{item.sourceUnavailable ? " · 原文失效" : ""}</span>
+                  <span>{item.source.trim() || "来源未标注"} · {item.wasInserted ? "本次写入" : "复用已有情报"}</span>
+                  <span className={`evidence-state ${item.evidenceStatus}`} title={item.evidenceMessage}>{evidenceLabel} · {item.evidenceMessage}</span>
                 </div>
-                {sourceUrl ? <a className="source-external" href={sourceUrl} target="_blank" rel="noreferrer"><ExternalLink size={16} />打开原文（新窗口）</a> : <span className="source-unavailable">{item.sourceUnavailable ? "原文已失效" : "原文链接不可用"}</span>}
+                {sourceUrl ? <a className="source-external" href={sourceUrl} target="_blank" rel="noreferrer"><ExternalLink size={16} />打开原文（新窗口）</a> : <span className="source-unavailable">原文不可用</span>}
               </article>;
             })}
           </div> : <p className="trace-empty">本报告没有关联来源情报</p>

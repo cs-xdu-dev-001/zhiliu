@@ -183,6 +183,8 @@ button:disabled { cursor: wait; }
 .search-result p { max-width: 72ch; margin: 0; color: var(--ink-subtle); font-size: 15px; line-height: 1.65; display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .stack-xl { display: grid; gap: 28px; }
 .feed-tools { display: block; }
+.supplement-mode { min-height: 50px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 14px; border: 1px solid var(--signal-border); border-radius: 9px; background: var(--signal-soft); color: var(--ink); font-weight: 700; }
+.supplement-mode a { min-height: 44px; display: inline-flex; align-items: center; color: var(--signal); text-decoration: none; }
 .filter-selects { display: grid; grid-template-columns: 105px 105px 90px minmax(120px, 155px) 95px; gap: 8px; flex: 0 0 auto; }
 .filter-selects select { width: 100%; height: 44px; border: 1px solid var(--line); border-radius: 7px; color: var(--ink); background: white; padding: 0 9px; font-size: 16px; }
 .filter-menu { position: relative; }
@@ -388,8 +390,8 @@ button:disabled { cursor: wait; }
 .report-body { max-width: 72ch; margin: 18px 0 0; color: var(--ink-soft); line-height: 1.9; white-space: pre-wrap; overflow-wrap: anywhere; }
 .report-period { color: var(--muted); font-size: 13px; }
 .report-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
-.report-actions button { min-height: 44px; display: inline-flex; align-items: center; gap: 7px; padding: 0 13px; border: 1px solid var(--line); border-radius: 8px; background: #f7f9f7; color: var(--ink-soft); font: inherit; font-weight: 700; }
-.report-actions button:hover { border-color: var(--signal-border); background: var(--signal-soft); color: var(--signal); }
+.report-actions button, .report-actions .report-add-sources { min-height: 44px; display: inline-flex; align-items: center; gap: 7px; padding: 0 13px; border: 1px solid var(--line); border-radius: 8px; background: #f7f9f7; color: var(--ink-soft); font: inherit; font-weight: 700; text-decoration: none; }
+.report-actions button:hover, .report-actions .report-add-sources:hover { border-color: var(--signal-border); background: var(--signal-soft); color: var(--signal); }
 .report-action-short { display: none; }
 .citation-state { width: fit-content; display: inline-flex; align-items: center; gap: 7px; margin-top: 14px; padding: 7px 10px; border-radius: 7px; font-size: 14px; font-weight: 700; }
 .citation-state.valid { color: #176b4b; background: #e7f4ed; }
@@ -405,6 +407,29 @@ button:disabled { cursor: wait; }
 .report-versions span { margin-right: 3px; color: var(--muted); font-size: 13px; }
 .report-versions a, .report-versions strong { min-width: 44px; min-height: 44px; display: inline-grid; place-items: center; border-radius: 6px; color: var(--signal); text-decoration: none; }
 .report-versions strong { background: var(--signal); color: white; }
+.version-diff { padding: 18px 20px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); }
+.version-diff-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.version-diff-heading h2 { margin: 0; font-size: 18px; }
+.version-diff-heading a { min-height: 44px; display: inline-flex; align-items: center; color: var(--signal); font-weight: 750; text-decoration: none; }
+.version-diff-facts { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
+.version-diff-facts span { padding: 5px 8px; border-radius: 5px; background: #f0f3f1; color: var(--ink-soft); font-size: 13px; }
+.instruction-diff { display: grid; gap: 5px; margin-top: 10px; }
+.instruction-diff p { display: grid; grid-template-columns: 58px minmax(0, 1fr); gap: 8px; margin: 0; color: var(--ink-soft); line-height: 1.55; }
+.instruction-diff span { color: var(--muted); font-size: 13px; font-weight: 700; }
+.source-diff-list { display: grid; gap: 5px; margin-top: 10px; }
+.source-diff-list p { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 8px; margin: 0; line-height: 1.55; }
+.source-diff-list span { font-size: 13px; font-weight: 750; }
+.source-diff-list .added span { color: var(--success); }
+.source-diff-list .removed span { color: var(--danger); }
+.source-diff-list a { color: var(--ink); overflow-wrap: anywhere; }
+.version-diff details { margin-top: 10px; }
+.version-diff summary { width: fit-content; min-height: 44px; display: flex; align-items: center; color: var(--signal); font-weight: 750; cursor: pointer; }
+.version-change-list { display: grid; gap: 6px; margin-top: 5px; }
+.version-change-list p { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 6px; margin: 0; padding: 8px 10px; border-radius: 6px; line-height: 1.55; overflow-wrap: anywhere; }
+.version-change-list p.added { background: #edf8f1; color: #185f45; }
+.version-change-list p.removed { background: #fff0ef; color: #8b3d35; }
+.version-change-list p span { font-weight: 900; }
+.version-diff-note { margin: 8px 0 0; color: var(--muted); font-size: 13px; }
 .report-action-notice { margin-top: 10px; padding: 10px 12px; border-radius: 8px; font-weight: 650; }
 .report-action-notice.success { color: var(--success); background: var(--signal-soft); }.report-action-notice.error { color: var(--danger); background: var(--danger-soft); }
 .lineage-section { padding: 20px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); }
@@ -430,6 +455,10 @@ button:disabled { cursor: wait; }
 .source-row:target { border-color: #82b89f; background: #f4faf6; }
 .source-row p { margin: 0; color: var(--ink-subtle); line-height: 1.65; display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .source-row span { color: var(--muted); font-size: 13px; }
+.source-row .evidence-state { width: fit-content; padding: 3px 6px; border-radius: 4px; font-weight: 700; }
+.source-row .evidence-state.traceable { background: var(--signal-soft); color: var(--success); }
+.source-row .evidence-state.unreferenced { background: var(--amber-soft); color: #865514; }
+.source-row .evidence-state.source-unavailable, .source-row .evidence-state.invalid, .source-row .evidence-state.unsafe-link { background: var(--danger-soft); color: var(--danger); }
 .source-external { flex: 0 0 auto; min-height: 44px; display: inline-flex; align-items: center; gap: 6px; }
 .source-unavailable { flex: 0 0 auto; color: var(--muted); font-size: 14px; }
 .trace-page { width: 100%; max-width: 820px; margin: 0 auto; display: grid; gap: 18px; }

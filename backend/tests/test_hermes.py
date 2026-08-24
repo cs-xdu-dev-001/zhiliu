@@ -121,6 +121,13 @@ def test_item_fingerprint_normalizes_title_and_url() -> None:
     assert len(first) == 64
 
 
+@pytest.mark.parametrize("url", ["javascript:alert(1)", "file:///etc/passwd", "not-a-url", "https://user:pass@example.com/"])
+def test_item_fingerprint_rejects_unsafe_source_urls(url: str) -> None:
+    run_service = import_module("app.services.run_service")
+    with pytest.raises(ValueError, match="来源链接"):
+        run_service.item_fingerprint("Title", url)
+
+
 @pytest.mark.asyncio
 async def test_probe_health_then_capabilities_with_auth() -> None:
     hermes = import_module("app.services.hermes")

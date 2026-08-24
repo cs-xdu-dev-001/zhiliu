@@ -15,6 +15,10 @@ from app.services.quality import record_quality_decisions
 
 def normalize_url(value: str) -> str:
     parsed = urlsplit(value.strip())
+    if parsed.scheme.casefold() not in {"http", "https"} or not parsed.hostname:
+        raise ValueError("来源链接必须是有效的HTTP(S)地址")
+    if parsed.username or parsed.password:
+        raise ValueError("来源链接不能包含账号信息")
     path = parsed.path.rstrip("/") or "/"
     return urlunsplit((parsed.scheme.lower(), parsed.netloc.lower(), path, parsed.query, ""))
 

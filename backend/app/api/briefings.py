@@ -17,13 +17,40 @@ from app.schemas import (
     BriefingPage,
     BriefingRegenerationRequest,
     BriefingResponse,
+    BriefingVersionSummaryResponse,
     PublicationSummaryResponse,
     SourceItemResponse,
     TaskRunResponse,
 )
+from app.services.report_service import build_version_diff, citation_numbers, source_evidence_status
 from app.services.run_service import canonical_item
 
 router = APIRouter(prefix="/api/briefings", tags=["briefings"])
+
+
+def _briefing_source_ids(db: Session, briefing_id: int) -> list[int]:
+    publication_id = db.scalar(
+        select(HermesPublication.id)
+        .where(HermesPublication.briefing_id == briefing_id)
+        .order_by(HermesPublication.created_at, HermesPublication.id)
+        .limit(1)
+    )
+    if publication_id is None:
+        return []
+    return list(db.scalars(
+        select(PublicationItem.item_id)
+        .where(PublicationItem.publication_id == publication_id)
+        .order_by(PublicationItem.ordinal)
+    ).all())
+
+
+def _briefing_instruction(db: Session, briefing_id: int) -> str:
+    return db.scalar(
+        select(HermesPublication.request_summary)
+        .where(HermesPublication.briefing_id == briefing_id)
+        .order_by(HermesPublication.created_at, HermesPublication.id)
+        .limit(1)
+    ) or ""
 
 
 def _queue_report(
@@ -98,7 +125,7 @@ def _queue_report(
             )
         )
         if active_series is not None:
-            return serialize_task_run(db, active_series)
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="该报告已有新版本生成中") from None
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="报告任务与现有数据冲突")
     db.refresh(task)
     return serialize_task_run(db, task)
@@ -172,6 +199,7 @@ def get_briefing(briefing_id: int, db: Session = Depends(get_db)) -> BriefingDet
     )
     source_items: list[SourceItemResponse] = []
     publication_response = None
+    current_source_ids: list[int] = []
     if publication is not None:
         rows = db.execute(
             select(PublicationItem, IntelligenceItem)
@@ -179,8 +207,17 @@ def get_briefing(briefing_id: int, db: Session = Depends(get_db)) -> BriefingDet
             .where(PublicationItem.publication_id == publication.id)
             .order_by(PublicationItem.ordinal)
         ).all()
-        source_items = [
-            SourceItemResponse(
+        cited_numbers = set(citation_numbers(record.content))
+        for link, item in rows:
+            citation_number = link.ordinal + 1
+            evidence_status, evidence_message = source_evidence_status(
+                citation_number=citation_number,
+                cited_numbers=cited_numbers,
+                url=item.url,
+                is_invalid=item.is_invalid,
+                source_unavailable=item.source_unavailable,
+            )
+            source_items.append(SourceItemResponse(
                 id=item.id,
                 title=item.title,
                 summary=item.summary,
@@ -190,9 +227,11 @@ def get_briefing(briefing_id: int, db: Session = Depends(get_db)) -> BriefingDet
                 was_inserted=link.was_inserted,
                 is_invalid=item.is_invalid,
                 source_unavailable=item.source_unavailable,
-            )
-            for link, item in rows
-        ]
+                is_cited=citation_number in cited_numbers,
+                evidence_status=evidence_status,
+                evidence_message=evidence_message,
+            ))
+            current_source_ids.append(item.id)
         publication_response = PublicationSummaryResponse.model_validate(publication)
     versions = [record]
     if record.series_id:
@@ -203,12 +242,42 @@ def get_briefing(briefing_id: int, db: Session = Depends(get_db)) -> BriefingDet
                 .order_by(Briefing.version_number.desc(), Briefing.id.desc())
             ).all()
         )
+    previous = db.get(Briefing, record.previous_version_id) if record.previous_version_id else None
+    version_diff = None
+    if previous is not None:
+        version_diff = build_version_diff(
+            previous,
+            record,
+            _briefing_source_ids(db, previous.id),
+            current_source_ids,
+            _briefing_instruction(db, previous.id),
+            publication.request_summary if publication is not None else "",
+        )
+        changed_source_ids = [
+            *version_diff["added_source_ids"],
+            *version_diff["removed_source_ids"],
+        ]
+        changed_sources = {
+            item.id: item.title
+            for item in db.scalars(
+                select(IntelligenceItem).where(IntelligenceItem.id.in_(changed_source_ids))
+            ).all()
+        } if changed_source_ids else {}
+        version_diff["added_sources"] = [
+            {"id": item_id, "title": changed_sources.get(item_id, f"情报#{item_id}")}
+            for item_id in version_diff["added_source_ids"]
+        ]
+        version_diff["removed_sources"] = [
+            {"id": item_id, "title": changed_sources.get(item_id, f"情报#{item_id}")}
+            for item_id in version_diff["removed_source_ids"]
+        ]
     return BriefingDetailResponse(
         **BriefingResponse.model_validate(record).model_dump(),
         source_items=source_items,
         publication=publication_response,
         trace_available=publication is not None,
-        versions=[BriefingResponse.model_validate(version) for version in versions],
+        versions=[BriefingVersionSummaryResponse.model_validate(version) for version in versions],
+        version_diff=version_diff,
     )
 
 
@@ -236,6 +305,9 @@ def regenerate_briefing(
             .order_by(PublicationItem.ordinal)
         ).all()
     )
+    item_ids = list(dict.fromkeys([*item_ids, *payload.item_ids]))
+    if len(item_ids) > 20:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="单份报告最多使用20条情报")
     series_id = record.series_id or str(uuid4())
     active = db.scalar(
         select(TaskRun).where(
@@ -245,7 +317,15 @@ def regenerate_briefing(
         )
     )
     if active is not None:
-        return serialize_task_run(db, active)
+        expected_instruction = payload.instruction.strip() or "根据所选情报生成专题报告"
+        expected_ids = json.dumps(item_ids)
+        if (
+            active.trace_id == payload.request_id
+            and active.report_item_ids_json == expected_ids
+            and active.request_summary == expected_instruction
+        ):
+            return serialize_task_run(db, active)
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="该报告已有新版本生成中")
     latest_version = db.scalar(
         select(func.max(Briefing.version_number)).where(Briefing.series_id == series_id)
     ) or record.version_number

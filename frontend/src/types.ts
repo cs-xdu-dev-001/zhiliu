@@ -111,6 +111,9 @@ export interface SourceItem {
   wasInserted: boolean;
   isInvalid: boolean;
   sourceUnavailable?: boolean;
+  isCited: boolean;
+  evidenceStatus: "traceable" | "unreferenced" | "source-unavailable" | "invalid" | "unsafe-link";
+  evidenceMessage: string;
 }
 
 export type BulkItemAction = "read" | "unread" | "save" | "unsave" | "ignore" | "unignore" | "invalidate" | "restore" | "tag" | "untag";
@@ -146,7 +149,34 @@ export interface BriefingDetail extends Briefing {
   sourceItems: SourceItem[];
   publication: PublicationSummary | null;
   traceAvailable: boolean;
-  versions?: Briefing[];
+  versions?: BriefingVersionSummary[];
+  versionDiff?: BriefingVersionDiff | null;
+}
+
+export interface BriefingVersionSummary {
+  id: number;
+  title: string;
+  versionNumber: number;
+  itemCount: number;
+  citationStatus: "unchecked" | "valid" | "warning";
+  createdAt: string;
+}
+
+export interface BriefingVersionDiff {
+  previousVersionId: number;
+  previousVersionNumber: number;
+  titleChanged: boolean;
+  instructionChanged: boolean;
+  previousInstruction: string;
+  currentInstruction: string;
+  addedSourceIds: number[];
+  removedSourceIds: number[];
+  addedSources: Array<{ id: number; title: string }>;
+  removedSources: Array<{ id: number; title: string }>;
+  addedSegmentCount: number;
+  removedSegmentCount: number;
+  changes: Array<{ kind: "added" | "removed"; text: string }>;
+  condensed: boolean;
 }
 
 export interface PublicationTrace {
