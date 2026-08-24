@@ -604,6 +604,56 @@ class DailyAttentionGenerateResponse(ApiModel):
     task: "TaskRunResponse | None" = None
 
 
+FeedbackType = Literal["useful", "irrelevant", "duplicate", "summary_wrong", "source_unreliable", "follow_up"]
+
+
+class FeedbackCreateRequest(ApiModel):
+    target_type: Literal["item", "briefing"]
+    target_id: int = Field(gt=0)
+    feedback_type: FeedbackType
+    note: str = Field(default="", max_length=1000)
+    idempotency_key: str = Field(min_length=8, max_length=160)
+    apply_long_term: bool = False
+
+    @model_validator(mode="after")
+    def validate_feedback(self) -> "FeedbackCreateRequest":
+        if self.feedback_type == "summary_wrong" and not self.note.strip():
+            raise ValueError("摘要有误时请说明需要修正的内容")
+        if self.apply_long_term and self.feedback_type not in {"source_unreliable", "follow_up"}:
+            raise ValueError("只有来源不可靠或需要持续关注可形成长期偏好")
+        return self
+
+
+class FeedbackUpdateRequest(ApiModel):
+    version: int = Field(gt=0)
+    note: str | None = Field(default=None, max_length=1000)
+    apply_long_term: bool | None = None
+
+
+class FeedbackVersionRequest(ApiModel):
+    version: int = Field(gt=0)
+
+
+class FeedbackResponse(ApiModel):
+    id: int
+    item_id: int | None
+    briefing_id: int | None
+    topic_id: int | None
+    preference_id: int | None
+    feedback_type: FeedbackType
+    impact_scope: Literal["current", "topic", "long_term"]
+    note: str
+    active: bool
+    version: int
+    created_at: datetime
+    updated_at: datetime
+    revoked_at: datetime | None
+
+
+class FeedbackPage(ApiModel):
+    items: list[FeedbackResponse]
+
+
 class BriefingPage(ApiModel):
     items: list[BriefingResponse]
     total: int

@@ -3,7 +3,7 @@ import json
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from app.models import HermesPreference, HermesPublication, IntelligenceItem, ItemRevision, ItemTopic, PersonalizationSettings, PublicationItem
+from app.models import ContentFeedback, HermesPreference, HermesPublication, IntelligenceItem, ItemRevision, ItemTopic, PersonalizationSettings, PublicationItem
 
 ALGORITHM_VERSION = 1
 
@@ -17,7 +17,7 @@ def settings(db: Session) -> PersonalizationSettings:
     return record
 
 
-def score_item(item: IntelligenceItem, *, auto_learning: bool, rules: list[HermesPreference], followed_topics: set[int], cited: bool, corrected: bool) -> tuple[float, list[dict[str, object]]]:
+def score_item(item: IntelligenceItem, *, auto_learning: bool, rules: list[HermesPreference], followed_topics: set[int], cited: bool, corrected: bool, feedback_types: set[str]) -> tuple[float, list[dict[str, object]]]:
     score = item.importance
     reasons: list[dict[str, object]] = []
     source = item.source.casefold()
@@ -37,6 +37,20 @@ def score_item(item: IntelligenceItem, *, auto_learning: bool, rules: list[Herme
     matched_topics = sorted({link.topic.name for link in item.topic_links if link.topic_id in followed_topics})
     if matched_topics:
         score += .1; reasons.append({"code": "topic_followed", "text": f"已关注主题：{'、'.join(matched_topics[:2])}", "delta": .1})
+    feedback_weights = {
+        "useful": (.05, "你标记过有用"),
+        "irrelevant": (-.25, "你标记为不相关"),
+        "duplicate": (-.18, "你标记为重复内容"),
+        "summary_wrong": (-.02, "摘要等待修正"),
+        "source_unreliable": (-.12, "你标记来源不可靠"),
+        "follow_up": (.1, "你要求持续关注"),
+    }
+    feedback_reasons = []
+    for feedback_type in sorted(feedback_types):
+        delta, text = feedback_weights[feedback_type]
+        score += delta
+        feedback_reasons.append({"code": f"feedback_{feedback_type}", "text": text, "delta": delta})
+    reasons = feedback_reasons + reasons
     if auto_learning:
         if item.is_ignored:
             score -= .3; reasons.append({"code": "ignored", "text": "已忽略过，降低优先级", "delta": -.3})
@@ -63,8 +77,13 @@ def recalculate(db: Session, item_ids: list[int] | None = None) -> int:
     ids = [item.id for item in items]
     cited_ids = set(db.scalars(select(PublicationItem.item_id).join(HermesPublication).where(PublicationItem.item_id.in_(ids), HermesPublication.briefing_id.is_not(None))).all()) if ids else set()
     corrected_ids = set(db.scalars(select(ItemRevision.item_id).where(ItemRevision.item_id.in_(ids), ItemRevision.action.in_(("edited", "hermes_feedback", "change_corrected")))).all()) if ids else set()
+    feedback_by_item: dict[int, set[str]] = {}
+    if ids:
+        for item_id, feedback_type in db.execute(select(ContentFeedback.item_id, ContentFeedback.feedback_type).where(ContentFeedback.item_id.in_(ids), ContentFeedback.active.is_(True))).all():
+            if item_id is not None:
+                feedback_by_item.setdefault(item_id, set()).add(feedback_type)
     for item in items:
-        score, reasons = score_item(item, auto_learning=config.auto_learning_enabled, rules=rules, followed_topics=followed_topics, cited=item.id in cited_ids, corrected=item.id in corrected_ids)
+        score, reasons = score_item(item, auto_learning=config.auto_learning_enabled, rules=rules, followed_topics=followed_topics, cited=item.id in cited_ids, corrected=item.id in corrected_ids, feedback_types=feedback_by_item.get(item.id, set()))
         item.personalized_score = score
         item.recommendation_reasons_json = json.dumps(reasons, ensure_ascii=False)
         item.personalization_version = config.algorithm_version

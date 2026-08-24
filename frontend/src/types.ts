@@ -479,3 +479,24 @@ export interface DailyAttentionGenerate {
   task: TaskRun | null;
 }
 
+export type FeedbackType = "useful" | "irrelevant" | "duplicate" | "summary_wrong" | "source_unreliable" | "follow_up";
+export type FeedbackImpactScope = "current" | "topic" | "long_term";
+
+export interface ContentFeedback {
+  id: number;
+  itemId: number | null;
+  briefingId: number | null;
+  topicId: number | null;
+  preferenceId: number | null;
+  feedbackType: FeedbackType;
+  impactScope: FeedbackImpactScope;
+  note: string;
+  active: boolean;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+  revokedAt: string | null;
+}
+
+export interface FeedbackPage { items: ContentFeedback[]; }
+

@@ -13,7 +13,8 @@
 - 自然语言搜索已有情报和报告
 - 主题信号中心：从情报关键词、订阅和偏好自动归集主题，比较近7天与此前7天变化
 - 变化检测：区分首次出现、持续进展、重要更新、重复消息、观点变化和信息失效，保留前后快照与精确关联
-- Hermes长期偏好与微信侧内容修正
+- 情报和报告反馈历史：支持有用、不相关、重复、摘要有误、来源不可靠和持续关注，可撤销或恢复
+- 显式反馈可形成Hermes长期偏好，并直接进入可解释排序理由
 - 内容质量中心：查看过滤、去重与写入理由，并可恢复误过滤内容
 - 订阅健康：查看近30天成功率、连续失败、运行时长与产出量
 - 未配置Hermes时的完整演示模式
@@ -113,7 +114,7 @@ hermes skills list
 
 配置中的`http://127.0.0.1:8080/api/mcp`适用于Hermes和知流部署在同一台服务器、Web仅绑定本机8080端口的情况。验收时可直接在微信发送：“请检索今天最重要的三条Agent动态，整理好以后放进知流。”Hermes先调用`zhiliu_get_preferences`读取长期偏好，再调用`zhiliu_begin_task`登记任务，并在检索、整理、写入阶段调用`zhiliu_update_task`上报进度，完成后调用`zhiliu_publish`；每条变化需提交`changeType`、`changeBasis`和`sourceUrls`，非首次出现还需提交经`zhiliu_search`核验的`relatedItemId`。任一步失败则调用`zhiliu_report_failure`。只有发布工具返回成功后才应确认写入，并把回执中的结果摘要、`briefingUrl`和`traceUrl`回复给用户。开始回执中的`taskUrl`可用于查看实时进度。
 
-Hermes还可用`zhiliu_search`回答“知流里最近有哪些Agent框架更新”，用`zhiliu_save_preference`和`zhiliu_remove_preference`维护用户明确表达的长期偏好，并在情报ID唯一明确时用`zhiliu_update_item`修正内容。网页顶部搜索入口会同时检索情报和报告；“订阅与任务→Hermes偏好”可查看和维护同一组偏好。
+Hermes还可用`zhiliu_search`回答“知流里最近有哪些Agent框架更新”，用`zhiliu_save_preference`和`zhiliu_remove_preference`维护用户明确表达的长期偏好，并在情报ID唯一明确时用`zhiliu_update_item`修正内容。情报和报告详情的“反馈与修正”会保留可查询历史；报告反馈只修正当前报告，情报反馈才会影响排序；只有用户在情报上显式勾选时，“来源不可靠”或“持续关注”才形成长期偏好。Hermes通过`zhiliu_get_preferences`只读取压缩后的有效规则，不读取原始反馈历史。网页顶部搜索入口会同时检索情报和报告；“订阅与任务→Hermes偏好”可查看和维护同一组偏好。
 
 首页“今日关注”会聚合高价值新增、重要变化、升温主题、来源失效、待确认关联和连续失败任务。用户可调整最低重要程度并选择仅在重要变化时生成；网页生成和Hermes的`zhiliu_prepare_daily_attention`都使用按日期与范围确定的幂等键，无有效候选时不会生成空摘要。
 

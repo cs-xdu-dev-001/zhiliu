@@ -401,6 +401,21 @@ test("维护情报并保留修改记录", async ({ page }, testInfo) => {
   await capture(page, testInfo, "item-merge-dialog");
 });
 
+test("反馈进入历史并可撤销恢复", async ({ page }, testInfo) => {
+  await page.goto("/items/1");
+  await page.getByText("反馈与修正").click();
+  await expect(page.getByRole("button", { name: "有用" })).toBeVisible();
+  await page.getByRole("button", { name: "有用" }).click();
+  await expect(page.getByRole("status")).toContainText("仅当前内容");
+  await expect(page.getByText("仅当前内容").last()).toBeVisible();
+
+  await page.getByRole("button", { name: "撤销" }).first().click();
+  await expect(page.getByRole("status")).toContainText("反馈已撤销");
+  await page.getByRole("button", { name: "恢复" }).first().click();
+  await expect(page.getByRole("status")).toContainText("反馈已恢复");
+  await capture(page, testInfo, "item-feedback-history");
+});
+
 test("搜索知流并管理Hermes偏好", async ({ page }, testInfo) => {
   if (testInfo.project.name === "mobile") await page.setViewportSize({ width: 320, height: 740 });
   await page.goto("/");

@@ -11,7 +11,7 @@ description: 通过微信自然语言搜索、整理和维护知流内容，或�
 - 用户询问知流里已有的情报或报告时，调用`zhiliu_search`；先用用户原话搜索，结果不足再提炼关键词重试一次。不要为了回答已有内容而重新联网检索。
 - 用户明确要求持续关注、每天整理或定期监测时，调用`zhiliu_create_monitor`。
 - 用户要求生成或查看“今日关注”“每日关注摘要”时，先调用`zhiliu_prepare_daily_attention`。没有候选时不要生成空摘要；有候选时按返回的`instruction`整理，并将返回的`idempotencyKey`同时用作`zhiliu_publish`的`idempotencyKey`和`traceId`，确保同一日期、同一范围只生成一次。
-- 用户用“以后”“今后”“默认”“一直”等措辞表达长期偏好时，调用`zhiliu_save_preference`；只针对本次任务的要求不要保存。执行知流检索或写入前调用`zhiliu_get_preferences`，遵循适用的来源、主题和输出偏好。
+- 用户用“以后”“今后”“默认”“一直”等措辞表达长期偏好时，调用`zhiliu_save_preference`；只针对本次任务的要求不要保存。执行知流检索或写入前调用`zhiliu_get_preferences`，遵循适用的来源、主题和输出偏好。该工具返回的是压缩后的有效规则，不需要也不得索取原始反馈历史。
 - 用户要求删除某项长期偏好时，先查询偏好，再用对应ID调用`zhiliu_remove_preference`。
 - 用户要求修正“这条情报”时，只有当前对话中已有唯一明确的知流情报ID，才能调用`zhiliu_update_item`；否则先搜索并请用户确认，不能猜ID。
 - 实际访问原文确认404、410或页面已删除时，可用`zhiliu_update_item`设置`sourceUnavailable=true`；仅网络超时或临时连接失败时不要标记。确认原文恢复后设置为`false`。

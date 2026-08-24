@@ -1,7 +1,7 @@
 import json
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -390,6 +390,35 @@ class PersonalizationSettings(Base):
     daily_min_importance: Mapped[float] = mapped_column(Float, default=0.7)
     daily_important_only: Mapped[bool] = mapped_column(Boolean, default=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+
+class ContentFeedback(Base):
+    __tablename__ = "content_feedback"
+    __table_args__ = (
+        Index("ix_content_feedback_item_active", "item_id", "active", "created_at"),
+        Index("ix_content_feedback_briefing_active", "briefing_id", "active", "created_at"),
+        CheckConstraint("(item_id IS NOT NULL) != (briefing_id IS NOT NULL)", name="ck_content_feedback_one_target"),
+        CheckConstraint("feedback_type IN ('useful','irrelevant','duplicate','summary_wrong','source_unreliable','follow_up')", name="ck_content_feedback_type"),
+        CheckConstraint("impact_scope IN ('current','topic','long_term')", name="ck_content_feedback_impact_scope"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    item_id: Mapped[int | None] = mapped_column(ForeignKey("intelligence_items.id"), nullable=True, index=True)
+    briefing_id: Mapped[int | None] = mapped_column(ForeignKey("briefings.id"), nullable=True, index=True)
+    topic_id: Mapped[int | None] = mapped_column(ForeignKey("topics.id"), nullable=True, index=True)
+    preference_id: Mapped[int | None] = mapped_column(ForeignKey("hermes_preferences.id"), nullable=True, index=True)
+    preference_was_active: Mapped[bool] = mapped_column(Boolean, default=False)
+    feedback_type: Mapped[str] = mapped_column(String(40), index=True)
+    impact_scope: Mapped[str] = mapped_column(String(30), default="current")
+    note: Mapped[str] = mapped_column(Text, default="")
+    effect_before_json: Mapped[str] = mapped_column(Text, default="{}")
+    request_hash: Mapped[str] = mapped_column(String(64))
+    idempotency_key: Mapped[str] = mapped_column(String(160), unique=True, index=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class SavedView(Base):

@@ -97,6 +97,19 @@ async def test_official_client_discovers_and_calls_zhiliu_tools(
                     search_items = search_result.structuredContent["results"]
                     assert search_items[0]["title"] == "MCP联通"
 
+                    feedback_response = await http_client.post(
+                        "/api/feedback",
+                        json={
+                            "targetType": "item",
+                            "targetId": search_items[0]["resultId"],
+                            "feedbackType": "follow_up",
+                            "applyLongTerm": True,
+                            "idempotencyKey": "mcp-feedback-chain-test",
+                        },
+                    )
+                    assert feedback_response.status_code == 201
+                    feedback_preference_id = feedback_response.json()["preferenceId"]
+
                     attention = await session.call_tool("zhiliu_prepare_daily_attention", arguments={})
                     assert attention.isError is False
                     assert attention.structuredContent["idempotencyKey"].startswith("daily-attention:")
@@ -118,6 +131,13 @@ async def test_official_client_discovers_and_calls_zhiliu_tools(
                     assert listed.isError is False
                     assert listed.structuredContent is not None
                     assert listed.structuredContent["preferences"][0]["value"] == "Example"
+                    feedback_preference = next(
+                        value for value in listed.structuredContent["preferences"]
+                        if value["preferenceId"] == feedback_preference_id
+                    )
+                    assert feedback_preference["scope"] == "topic"
+                    assert feedback_preference["effect"] == "prefer"
+                    assert "feedbackHistory" not in listed.structuredContent
 
                     updated = await session.call_tool(
                         "zhiliu_update_item",

@@ -5,6 +5,7 @@ import { Link, useParams, useSearchParams } from "wouter";
 
 import { api, ApiError } from "../api";
 import { EmptyState } from "../components/EmptyState";
+import { FeedbackPanel } from "../components/FeedbackPanel";
 import type { ChangeType, HermesPreference, IntelligenceItem, IntelligenceItemDetail, IntelligenceKind, ItemChange, ItemRevision, MergeCandidate } from "../types";
 import { useModalDialog } from "../useModalDialog";
 
@@ -243,6 +244,8 @@ export function ItemDetail() {
         {item.recommendationReasons?.length ? <section className="recommendation-explanation" aria-labelledby="recommendation-heading"><h3 id="recommendation-heading">为什么推荐给我</h3><p>原始{Math.round(item.importance * 100)}分，个性化后{Math.round((item.personalizedScore ?? item.importance) * 100)}分</p><ul>{item.recommendationReasons.map((reason) => <li key={`${reason.code}-${reason.text}`}><span>{reason.text}</span><strong>{reason.delta > 0 ? "+" : ""}{Math.round(reason.delta * 100)}</strong></li>)}</ul></section> : null}
         <div className="keyword-row">{item.topics?.map((topic) => <Link key={topic.id} href={`/topics/${topic.id}`}>{topic.name}</Link>)}{item.tags.map((tag) => <span className="item-tag" key={tag}>{tag}</span>)}</div>
       </div>
+
+      <FeedbackPanel targetType="item" targetId={item.id} />
 
       <section className="maintenance-section" aria-labelledby="maintenance-heading">
         <div className="lineage-heading"><Pencil size={19} /><h2 id="maintenance-heading">内容维护</h2></div>

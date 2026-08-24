@@ -33,6 +33,7 @@ class PreferenceService:
         value: str,
         kind: str = "all",
         note: str = "",
+        commit: bool = True,
     ) -> tuple[HermesPreference, bool]:
         normalized_value = value.strip()
         normalized_note = note.strip()
@@ -48,8 +49,11 @@ class PreferenceService:
         if existing is not None:
             existing.note = normalized_note
             existing.active = True
-            self.db.commit()
-            self.db.refresh(existing)
+            if commit:
+                self.db.commit()
+                self.db.refresh(existing)
+            else:
+                self.db.flush()
             return existing, False
 
         record = HermesPreference(
@@ -62,8 +66,13 @@ class PreferenceService:
         )
         self.db.add(record)
         try:
-            self.db.commit()
+            if commit:
+                self.db.commit()
+            else:
+                self.db.flush()
         except IntegrityError:
+            if not commit:
+                raise
             self.db.rollback()
             existing = self.db.scalar(
                 select(HermesPreference).where(
@@ -81,7 +90,8 @@ class PreferenceService:
             self.db.commit()
             self.db.refresh(existing)
             return existing, False
-        self.db.refresh(record)
+        if commit:
+            self.db.refresh(record)
         return record, True
 
     def _deactivate_opposite(self, *, scope: str, effect: str, value: str, kind: str) -> None:
@@ -100,23 +110,29 @@ class PreferenceService:
             .values(active=False)
         )
 
-    def remove(self, preference_id: int) -> HermesPreference:
+    def remove(self, preference_id: int, *, commit: bool = True) -> HermesPreference:
         record = self.db.get(HermesPreference, preference_id)
         if record is None:
             raise PreferenceNotFound("Hermes偏好不存在")
         record.active = False
-        self.db.commit()
-        self.db.refresh(record)
+        if commit:
+            self.db.commit()
+            self.db.refresh(record)
+        else:
+            self.db.flush()
         return record
 
-    def restore(self, preference_id: int) -> HermesPreference:
+    def restore(self, preference_id: int, *, commit: bool = True) -> HermesPreference:
         record = self.db.get(HermesPreference, preference_id)
         if record is None:
             raise PreferenceNotFound("Hermes偏好不存在")
         self._deactivate_opposite(scope=record.scope, effect=record.effect, value=record.value, kind=record.kind)
         record.active = True
-        self.db.commit()
-        self.db.refresh(record)
+        if commit:
+            self.db.commit()
+            self.db.refresh(record)
+        else:
+            self.db.flush()
         return record
 
     def filters_source(self, source: str, kind: str) -> bool:

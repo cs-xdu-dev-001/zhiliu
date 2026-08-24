@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { Link, useLocation, useParams, useSearchParams } from "wouter";
 
 import { api, ApiError } from "../api";
+import { FeedbackPanel } from "../components/FeedbackPanel";
 import type { BriefingDetail as BriefingDetailType, TaskRun } from "../types";
 import { useModalDialog } from "../useModalDialog";
 
@@ -159,6 +160,7 @@ export function BriefingDetail() {
         {report.citationStatus === "warning" && <details className="citation-warning-details"><summary><AlertTriangle size={17} />有{report.citationWarnings?.length ?? 0}条来源未在正文中引用</summary><ul>{report.citationWarnings?.map((warning) => <li key={warning}>{warning}</li>)}</ul></details>}
         <p className="report-body">{reportContent(report.content, report.sourceItems.length)}</p>
       </div>
+      <FeedbackPanel targetType="briefing" targetId={report.id} />
       {(report.versions?.length ?? 0) > 1 && <nav className="report-versions" aria-label="报告版本"><span>版本</span>{report.versions?.map((version) => version.id === report.id ? <strong key={version.id}>v{version.versionNumber ?? 1}</strong> : <Link key={version.id} href={`/reports/${version.id}`}>v{version.versionNumber ?? 1}</Link>)}</nav>}
       {report.versionDiff && <section className="version-diff" aria-labelledby="version-diff-heading">
         <div className="version-diff-heading"><h2 id="version-diff-heading">相较v{report.versionDiff.previousVersionNumber}</h2><Link href={`/reports/${report.versionDiff.previousVersionId}`}>查看上一版</Link></div>

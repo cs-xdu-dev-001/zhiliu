@@ -77,6 +77,18 @@ def test_empty_database_is_upgraded_to_traceable_schema(tmp_path: Path) -> None:
         constraint["column_names"] == ["series_id", "version_number"]
         for constraint in inspector.get_unique_constraints("briefings")
     )
+    assert "content_feedback" in inspector.get_table_names()
+    feedback_columns = {column["name"] for column in inspector.get_columns("content_feedback")}
+    assert {
+        "item_id", "briefing_id", "topic_id", "preference_id", "preference_was_active",
+        "feedback_type", "impact_scope", "idempotency_key", "version",
+    } <= feedback_columns
+    feedback_constraints = {constraint["name"] for constraint in inspector.get_check_constraints("content_feedback")}
+    assert {
+        "ck_content_feedback_one_target",
+        "ck_content_feedback_type",
+        "ck_content_feedback_impact_scope",
+    } <= feedback_constraints
 
 
 def test_existing_database_keeps_data_during_upgrade(tmp_path: Path) -> None:
