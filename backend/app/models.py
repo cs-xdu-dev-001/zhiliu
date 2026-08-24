@@ -387,6 +387,8 @@ class PersonalizationSettings(Base):
     id: Mapped[int] = mapped_column(primary_key=True, default=1)
     auto_learning_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     algorithm_version: Mapped[int] = mapped_column(Integer, default=1)
+    daily_min_importance: Mapped[float] = mapped_column(Float, default=0.7)
+    daily_important_only: Mapped[bool] = mapped_column(Boolean, default=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
 

@@ -8,6 +8,7 @@ import { Home } from "./Home";
 const { get } = vi.hoisted(() => ({ get: vi.fn() }));
 const writeText = vi.fn();
 vi.mock("../api", () => ({ api: { get } }));
+vi.mock("../components/DailyAttention", () => ({ DailyAttention: () => <section aria-label="今日关注">今日关注</section> }));
 
 const dashboard = {
   unreadCount: 1,

@@ -11,6 +11,7 @@ mcp_servers:
         - zhiliu_report_failure
         - zhiliu_create_monitor
         - zhiliu_search
+        - zhiliu_prepare_daily_attention
         - zhiliu_get_preferences
         - zhiliu_save_preference
         - zhiliu_remove_preference

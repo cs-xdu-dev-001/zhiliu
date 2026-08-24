@@ -25,6 +25,8 @@ from app.mcp_server.schemas import (
     SearchPayload,
     SearchReceipt,
     SearchResult,
+    DailyAttentionReceipt,
+    DailyAttentionSource,
     ItemFeedbackPayload,
     ItemFeedbackReceipt,
     TaskFailurePayload,
@@ -36,6 +38,7 @@ from app.mcp_server.service import MonitorService, PublicationService, TaskFeedb
 from app.services.preferences import PreferenceService
 from app.services.search import SearchService
 from app.services.item_maintenance import ItemMaintenanceService
+from app.services.daily_attention import build_instruction, build_snapshot
 
 
 SessionFactory = Callable[[], AbstractContextManager[Session]]
@@ -190,6 +193,36 @@ def build_mcp_server(
                     )
                     for hit in hits
                 ],
+            )
+
+    @server.tool(name="zhiliu_prepare_daily_attention")
+    def zhiliu_prepare_daily_attention() -> DailyAttentionReceipt:
+        """读取今日关注候选；整理后用返回的幂等键作为zhiliu_publish的idempotencyKey和traceId发布摘要。"""
+        with session_factory() as db:
+            snapshot = build_snapshot(db)
+            return DailyAttentionReceipt(
+                date=snapshot.day,
+                idempotency_key=snapshot.idempotency_key,
+                sources=[
+                    DailyAttentionSource(
+                        item_id=item.id,
+                        kind=item.kind,
+                        title=item.title,
+                        summary=item.summary,
+                        source=item.source,
+                        source_url=item.url,
+                        importance=item.personalized_score if item.personalized_score is not None else item.importance,
+                        reasons=snapshot.reasons[item.id],
+                    )
+                    for item in snapshot.items
+                ],
+                rising_topics=[topic.name for topic in snapshot.rising_topics],
+                important_change_count=snapshot.important_change_count,
+                source_unavailable_count=snapshot.source_unavailable_count,
+                pending_change_count=snapshot.pending_change_count,
+                consecutive_failure_count=snapshot.consecutive_failure_count,
+                instruction=build_instruction(snapshot),
+                message="有候选内容，可整理后发布" if snapshot.items else "今日没有达到条件的重要变化，不要发布空摘要",
             )
 
     @server.tool(name="zhiliu_get_preferences")

@@ -61,7 +61,7 @@ export interface ItemChange {
   sourceUrls: string[];
   before: Record<string, unknown>;
   after: Record<string, unknown>;
-  status: "confirmed" | "corrected" | "unlinked";
+  status: "pending" | "confirmed" | "corrected" | "unlinked";
   detectedAt: string;
 }
 
@@ -457,4 +457,25 @@ export interface PreferencePage {
 
 export interface PersonalizationSettings { autoLearningEnabled: boolean; algorithmVersion: number; updatedAt: string; }
 export interface PersonalizationRecalculate { updatedItems: number; algorithmVersion: number; }
+
+export interface DailyAttention {
+  date: string;
+  settings: { minImportance: number; importantOnly: boolean };
+  items: Array<{ item: IntelligenceItem; reasons: string[] }>;
+  risingTopics: Array<{ id: number; name: string; currentCount: number; previousCount: number }>;
+  importantChangeCount: number;
+  sourceUnavailableCount: number;
+  pendingChangeCount: number;
+  consecutiveFailureCount: number;
+  actionableCount: number;
+  idempotencyKey: string;
+  latestBriefing: Briefing | null;
+  activeTask: TaskRun | null;
+}
+
+export interface DailyAttentionGenerate {
+  created: boolean;
+  message: string;
+  task: TaskRun | null;
+}
 

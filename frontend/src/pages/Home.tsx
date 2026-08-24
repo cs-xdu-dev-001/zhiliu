@@ -5,6 +5,7 @@ import { Link } from "wouter";
 
 import { api } from "../api";
 import { BriefingCard } from "../components/BriefingCard";
+import { DailyAttention } from "../components/DailyAttention";
 import { ItemCard } from "../components/ItemCard";
 import { TaskRunCard, taskMessage } from "../components/TaskRunCard";
 import type { Dashboard, HermesConnection } from "../types";
@@ -119,6 +120,7 @@ export function Home() {
           </section>
         </div>
       </div>}
+      <DailyAttention />
     </div>
   );
 }

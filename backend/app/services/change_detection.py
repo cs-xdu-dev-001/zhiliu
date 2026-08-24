@@ -66,6 +66,7 @@ def record_change(
     related = db.get(IntelligenceItem, change.related_item_id) if change.related_item_id else None
     if change.related_item_id and related is None:
         raise ValueError(f"关联情报{change.related_item_id}不存在")
+    needs_relation = change.change_type in {"ongoing", "important_update", "viewpoint_changed"}
     event = ItemChange(
         item_id=item.id, related_item_id=related.id if related else None,
         task_run_id=task_run_id, publication_id=publication_id,
@@ -73,6 +74,7 @@ def record_change(
         source_urls_json=json.dumps(list(change.source_urls), ensure_ascii=False),
         before_json=json.dumps(before or {}, ensure_ascii=False),
         after_json=json.dumps(after or content_snapshot(item), ensure_ascii=False),
+        status="pending" if needs_relation and related is None else "confirmed",
         idempotency_key=idempotency_key,
     )
     db.add(event)

@@ -115,6 +115,8 @@ hermes skills list
 
 Hermes还可用`zhiliu_search`回答“知流里最近有哪些Agent框架更新”，用`zhiliu_save_preference`和`zhiliu_remove_preference`维护用户明确表达的长期偏好，并在情报ID唯一明确时用`zhiliu_update_item`修正内容。网页顶部搜索入口会同时检索情报和报告；“订阅与任务→Hermes偏好”可查看和维护同一组偏好。
 
+首页“今日关注”会聚合高价值新增、重要变化、升温主题、来源失效、待确认关联和连续失败任务。用户可调整最低重要程度并选择仅在重要变化时生成；网页生成和Hermes的`zhiliu_prepare_daily_attention`都使用按日期与范围确定的幂等键，无有效候选时不会生成空摘要。
+
 三个任务工具必须复用同一个8至160字符的稳定`traceId`，同一次重试也必须复用；能取得真实任务ID时另传`hermesRunId`，不能取得时省略，不得伪造。知流只保存脱敏后的`requestSummary`，不接收微信用户ID、群ID、昵称或完整聊天记录。首页“最近处理动态”和任务详情会实时展示受理、处理、写入、完成或失败状态。
 
 ## 质量与订阅健康

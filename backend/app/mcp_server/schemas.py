@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 
 from croniter import croniter
@@ -187,6 +187,30 @@ class SearchPayload(McpModel):
 class SearchReceipt(McpModel):
     query: str
     results: list[SearchResult]
+
+
+class DailyAttentionSource(McpModel):
+    item_id: int
+    kind: IntelligenceKind
+    title: str
+    summary: str
+    source: str
+    source_url: str
+    importance: float
+    reasons: list[str]
+
+
+class DailyAttentionReceipt(McpModel):
+    date: date
+    idempotency_key: str
+    sources: list[DailyAttentionSource]
+    rising_topics: list[str]
+    important_change_count: int
+    source_unavailable_count: int
+    pending_change_count: int
+    consecutive_failure_count: int
+    instruction: str
+    message: str
 
 
 class ItemFeedbackPayload(McpModel):

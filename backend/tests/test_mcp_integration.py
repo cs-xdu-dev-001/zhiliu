@@ -59,6 +59,7 @@ async def test_official_client_discovers_and_calls_zhiliu_tools(
                         "zhiliu_report_failure",
                         "zhiliu_create_monitor",
                         "zhiliu_search",
+                        "zhiliu_prepare_daily_attention",
                         "zhiliu_get_preferences",
                         "zhiliu_save_preference",
                         "zhiliu_remove_preference",
@@ -95,6 +96,11 @@ async def test_official_client_discovers_and_calls_zhiliu_tools(
                     assert search_result.structuredContent is not None
                     search_items = search_result.structuredContent["results"]
                     assert search_items[0]["title"] == "MCP联通"
+
+                    attention = await session.call_tool("zhiliu_prepare_daily_attention", arguments={})
+                    assert attention.isError is False
+                    assert attention.structuredContent["idempotencyKey"].startswith("daily-attention:")
+                    assert any(source["sourceUrl"] == "https://example.com/mcp" for source in attention.structuredContent["sources"])
 
                     preference_result = await session.call_tool(
                         "zhiliu_save_preference",

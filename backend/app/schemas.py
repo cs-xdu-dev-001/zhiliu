@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Literal
 
 from croniter import croniter
@@ -559,6 +559,49 @@ class PersonalizationSettingsUpdate(ApiModel):
 class PersonalizationRecalculateResponse(ApiModel):
     updated_items: int
     algorithm_version: int
+
+
+class DailyAttentionSettingsResponse(ApiModel):
+    min_importance: float
+    important_only: bool
+
+
+class DailyAttentionSettingsUpdate(ApiModel):
+    min_importance: float = Field(ge=0, le=1)
+    important_only: bool
+
+
+class DailyAttentionTopicResponse(ApiModel):
+    id: int
+    name: str
+    current_count: int
+    previous_count: int
+
+
+class DailyAttentionItemResponse(ApiModel):
+    item: IntelligenceItemResponse
+    reasons: list[str]
+
+
+class DailyAttentionResponse(ApiModel):
+    date: date
+    settings: DailyAttentionSettingsResponse
+    items: list[DailyAttentionItemResponse]
+    rising_topics: list[DailyAttentionTopicResponse]
+    important_change_count: int
+    source_unavailable_count: int
+    pending_change_count: int
+    consecutive_failure_count: int
+    actionable_count: int
+    idempotency_key: str
+    latest_briefing: BriefingResponse | None = None
+    active_task: "TaskRunResponse | None" = None
+
+
+class DailyAttentionGenerateResponse(ApiModel):
+    created: bool
+    message: str
+    task: "TaskRunResponse | None" = None
 
 
 class BriefingPage(ApiModel):
