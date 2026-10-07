@@ -12,6 +12,7 @@ from app.api.publications import router as publications_router
 from app.api.runs import router as runs_router
 from app.api.hermes_integration import router as hermes_integration_router
 from app.api.subscriptions import router as subscriptions_router
+from app.api.subscription_presets import router as subscription_presets_router
 from app.api.search import router as search_router
 from app.api.preferences import router as preferences_router
 from app.api.quality import router as quality_router
@@ -70,6 +71,7 @@ def create_app(
     application.add_middleware(SafeRequestLogMiddleware)
     application.dependency_overrides[get_settings] = lambda: runtime_settings
     application.include_router(subscriptions_router)
+    application.include_router(subscription_presets_router)
     application.include_router(items_router)
     application.include_router(briefings_router)
     application.include_router(publications_router)

@@ -10,6 +10,7 @@ from app.db import SessionLocal
 from app.models import Subscription, TaskRun
 from app.services.hermes import HermesBriefing, HermesItem, HermesResult, HermesUnavailable
 from app.core.crypto import SecretDecryptionError
+from app.cron_utils import normalize_weekday_for_apscheduler
 from app.services.hermes_integration import HermesIntegrationService
 from app.services.run_service import RunService
 from app.services.report_service import ReportService
@@ -203,7 +204,7 @@ def refresh_subscription_jobs() -> None:
         subscriptions = db.scalars(select(Subscription).where(Subscription.enabled.is_(True))).all()
         for subscription in subscriptions:
             try:
-                trigger = CronTrigger.from_crontab(subscription.schedule, timezone="Asia/Shanghai")
+                trigger = CronTrigger.from_crontab(normalize_weekday_for_apscheduler(subscription.schedule), timezone="Asia/Shanghai")
             except ValueError:
                 continue
             _scheduler.add_job(
@@ -228,7 +229,7 @@ def refresh_subscription_job(subscription_id: int) -> None:
                 _scheduler.remove_job(job_id)
             return
         try:
-            trigger = CronTrigger.from_crontab(subscription.schedule, timezone="Asia/Shanghai")
+            trigger = CronTrigger.from_crontab(normalize_weekday_for_apscheduler(subscription.schedule), timezone="Asia/Shanghai")
         except ValueError:
             if _scheduler.get_job(job_id) is not None:
                 _scheduler.remove_job(job_id)

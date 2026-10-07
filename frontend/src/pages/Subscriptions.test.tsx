@@ -54,6 +54,81 @@ it("用常用选项选择执行周期", async () => {
   expect(screen.getByRole("option", { name: "每天 08:00" })).toBeInTheDocument();
 });
 
+it("可以从研究雷达模板创建订阅", async () => {
+  get.mockImplementation((url: string) => {
+    if (url === "/api/subscription-presets") return Promise.resolve([{
+      id: "research-radar", name: "研究前沿雷达", kind: "paper", keywords: ["LLM Agent"],
+      schedule: "0 8 * * *", prompt: "检索研究", enabled: true, description: "论文和实验代码", sources: ["arXiv"],
+    }]);
+    return Promise.resolve([]);
+  });
+
+  render(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <Subscriptions />
+    </QueryClientProvider>,
+  );
+
+  await screen.findByText("还没有订阅");
+  await userEvent.click(screen.getByRole("button", { name: "新建订阅" }));
+  await userEvent.selectOptions(screen.getByRole("combobox", { name: "从模板开始" }), "research-radar");
+  expect(screen.getByLabelText("订阅名称")).toHaveValue("研究前沿雷达");
+  expect(screen.getByText("优先来源：arXiv")).toBeVisible();
+  await userEvent.click(screen.getByRole("button", { name: /只保留一手来源/ }));
+  expect(screen.getByLabelText("Hermes任务说明")).toHaveValue("检索研究\n只保留一手来源。");
+  await userEvent.click(screen.getByRole("button", { name: "保存订阅" }));
+
+  expect(post).toHaveBeenCalledWith("/api/subscription-presets/research-radar", expect.objectContaining({
+    name: "研究前沿雷达", kind: "paper", prompt: expect.stringContaining("只保留一手来源"),
+  }));
+});
+
+it("输入关注目标后给出智能模板建议", async () => {
+  get.mockImplementation((url: string) => url === "/api/subscription-presets" ? Promise.resolve([
+    { id: "engineering-radar", name: "工程进展雷达", kind: "news", keywords: ["GitHub"], schedule: "0 */6 * * *", prompt: "检索工程", enabled: true, description: "工程更新", sources: ["GitHub Releases"] },
+  ]) : Promise.resolve([]));
+
+  render(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <Subscriptions />
+    </QueryClientProvider>,
+  );
+
+  await screen.findByText("还没有订阅");
+  await userEvent.click(screen.getByRole("button", { name: "新建订阅" }));
+  await userEvent.type(screen.getByRole("textbox", { name: "描述关注目标" }), "我想看GitHub上的AI工程和版本更新");
+  expect(screen.getByRole("status")).toHaveTextContent("工程进展雷达");
+  await userEvent.click(screen.getByRole("button", { name: "应用建议" }));
+  expect(screen.getByLabelText("订阅名称")).toHaveValue("工程进展雷达");
+  expect(screen.getByLabelText("类型")).toHaveValue("news");
+});
+
+it("Hermes可以生成可编辑订阅草稿", async () => {
+  get.mockImplementation((url: string) => url === "/api/subscription-presets" ? Promise.resolve([]) : Promise.resolve([]));
+  post.mockImplementation((url: string) => url === "/api/subscriptions/draft" ? Promise.resolve({
+    subscription: { name: "Agent论文雷达", kind: "paper", keywords: ["Agent"], schedule: "0 8 * * *", prompt: "检索过去7天的Agent论文", enabled: true },
+    explanation: "根据研究主题生成论文订阅",
+    assumptions: ["未指定时间，默认每天08:00"],
+    hermesRunId: "draft_1",
+  }) : Promise.resolve({}));
+
+  render(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <Subscriptions />
+    </QueryClientProvider>,
+  );
+
+  await screen.findByText("还没有订阅");
+  await userEvent.click(screen.getByRole("button", { name: "新建订阅" }));
+  await userEvent.type(screen.getByRole("textbox", { name: "描述关注目标" }), "关注Agent论文");
+  await userEvent.click(screen.getByRole("button", { name: "生成可编辑草稿" }));
+
+  expect(await screen.findByDisplayValue("Agent论文雷达")).toBeVisible();
+  expect(screen.getByLabelText("Hermes任务说明")).toHaveValue("检索过去7天的Agent论文");
+  expect(screen.getByText("根据研究主题生成论文订阅")).toBeVisible();
+  expect(post).toHaveBeenCalledWith("/api/subscriptions/draft", expect.objectContaining({ description: "关注Agent论文" }));
+});
+
 it("确认后才删除订阅", async () => {
   get.mockResolvedValue([{
     id: 7,

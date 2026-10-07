@@ -10,6 +10,8 @@ from app.services.hermes_integration import HermesIntegrationService
 import asyncio
 from datetime import datetime, timedelta, timezone
 from app.services import scheduler
+from app.cron_utils import normalize_weekday_for_apscheduler
+from apscheduler.triggers.cron import CronTrigger
 
 
 class Settings:
@@ -18,6 +20,18 @@ class Settings:
     hermes_base_url = "https://env.example"
     hermes_api_key = "env-key"
     demo_mode = False
+
+
+def test_scheduler_preserves_legacy_croniter_weekday_numbers() -> None:
+    trigger = CronTrigger.from_crontab(
+        normalize_weekday_for_apscheduler("0 9 * * 1"),
+        timezone="Asia/Shanghai",
+    )
+    next_run = trigger.get_next_fire_time(None, datetime(2026, 10, 7, 12, tzinfo=timezone(timedelta(hours=8))))
+
+    assert next_run is not None
+    assert next_run.weekday() == 0
+    assert (next_run.hour, next_run.minute) == (9, 0)
 
 
 def test_resolver_prefers_database(db_session, subscription):

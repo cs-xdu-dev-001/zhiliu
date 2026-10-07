@@ -242,6 +242,37 @@ export interface Subscription {
 
 export type SubscriptionInput = Omit<Subscription, "id" | "lastRunAt" | "nextRunAt" | "createdAt" | "updatedAt">;
 
+export interface SubscriptionPreset extends SubscriptionInput {
+  id: string;
+  description: string;
+  sources: string[];
+}
+
+export interface SubscriptionPresetApplyResult {
+  presetId: string;
+  created: boolean;
+  subscription: Subscription;
+}
+
+export interface SubscriptionDraftRequest {
+  description: string;
+  current?: Partial<SubscriptionInput> | null;
+  usePreferences?: boolean;
+}
+
+export interface SubscriptionDraftResponse {
+  subscription: SubscriptionInput;
+  explanation: string;
+  assumptions: string[];
+  hermesRunId: string;
+}
+
+export interface SchedulePreviewResponse {
+  valid: boolean;
+  nextRuns: string[];
+  message: string;
+}
+
 export interface TaskRun {
   id: number;
   subscriptionId: number;

@@ -86,6 +86,56 @@ async def test_execute_rejects_malformed_output() -> None:
 
 
 @pytest.mark.asyncio
+async def test_draft_subscription_parses_editable_configuration() -> None:
+    hermes = import_module("app.services.hermes")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST":
+            body = json.loads(request.content)
+            assert "订阅配置助手" in body["instructions"]
+            return httpx.Response(202, json={"run_id": "draft_1", "status": "started"})
+        return httpx.Response(200, json={
+            "run_id": "draft_1",
+            "status": "completed",
+            "output": json.dumps({
+                "subscription": {
+                    "name": "Agent论文雷达",
+                    "kind": "paper",
+                    "keywords": ["Agent"],
+                    "schedule": "0 8 * * *",
+                    "prompt": "检索过去7天的Agent论文",
+                    "enabled": True,
+                },
+                "explanation": "根据研究主题生成论文订阅",
+                "assumptions": ["未指定时间，默认每天08:00"],
+            }),
+        })
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+        client = hermes.HermesClient(base_url="http://hermes.local", api_key="test-key", timeout_seconds=2, poll_interval=0, http_client=http_client)
+        result = await client.draft_subscription("关注Agent论文")
+
+    assert result.hermes_run_id == "draft_1"
+    assert result.subscription.name == "Agent论文雷达"
+    assert result.assumptions
+
+
+@pytest.mark.asyncio
+async def test_demo_draft_client_keeps_partial_fields() -> None:
+    hermes = import_module("app.services.hermes")
+    client = hermes.DemoSubscriptionDraftClient()
+
+    result = await client.draft_subscription(json.dumps({
+        "description": "跟踪Agent工程",
+        "current": {"keywords": ["Agent"], "schedule": "0 9 * * 1"},
+    }, ensure_ascii=False))
+
+    assert result.subscription.keywords == ["Agent"]
+    assert result.subscription.schedule == "0 9 * * 1"
+    assert result.subscription.prompt
+
+
+@pytest.mark.asyncio
 async def test_execute_does_not_expose_remote_error_details() -> None:
     hermes = import_module("app.services.hermes")
 

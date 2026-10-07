@@ -1,5 +1,6 @@
 from datetime import date, datetime
 from typing import Any, Literal
+from zoneinfo import ZoneInfo
 
 from croniter import croniter
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -41,9 +42,21 @@ class SubscriptionPayload(ApiModel):
     @field_validator("schedule")
     @classmethod
     def validate_schedule(cls, value: str) -> str:
-        if not croniter.is_valid(value):
-            raise ValueError("请使用标准Cron表达式")
+        value = value.strip()
+        if len(value.split()) != 5 or not croniter.is_valid(value):
+            raise ValueError("请使用五段Cron表达式，星期建议使用mon至sun")
+        try:
+            croniter(value, datetime.now(ZoneInfo("Asia/Shanghai"))).get_next(datetime)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("执行周期无效，请检查日期和星期") from exc
         return value
+
+    @field_validator("name", "prompt")
+    @classmethod
+    def require_text(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("内容不能为空")
+        return value.strip()
 
     @field_validator("keywords")
     @classmethod
@@ -57,6 +70,82 @@ class SubscriptionResponse(SubscriptionPayload):
     next_run_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
+
+
+class SubscriptionPresetResponse(SubscriptionPayload):
+    id: str
+    description: str
+    sources: list[str]
+
+
+class SubscriptionPresetApplyResponse(ApiModel):
+    preset_id: str
+    created: bool
+    subscription: SubscriptionResponse
+
+
+class SubscriptionDraftCurrent(ApiModel):
+    """Partially filled fields supplied as context while composing a draft."""
+
+    name: str | None = Field(default=None, max_length=120)
+    kind: IntelligenceKind | None = None
+    keywords: list[str] = Field(default_factory=list, max_length=30)
+    schedule: str | None = Field(default=None, max_length=80)
+    prompt: str | None = Field(default=None, max_length=10000)
+    enabled: bool | None = None
+
+    @field_validator("name", "prompt", mode="before")
+    @classmethod
+    def clean_optional_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        return value or None
+
+    @field_validator("schedule", mode="before")
+    @classmethod
+    def validate_optional_schedule(cls, value: str | None) -> str | None:
+        if value is None or not value.strip():
+            return None
+        return SubscriptionPayload.validate_schedule(value)
+
+    @field_validator("keywords")
+    @classmethod
+    def clean_keywords(cls, value: list[str]) -> list[str]:
+        return list(dict.fromkeys(keyword.strip() for keyword in value if keyword.strip()))
+
+
+class SubscriptionDraftRequest(ApiModel):
+    description: str = Field(min_length=2, max_length=2000)
+    current: SubscriptionDraftCurrent | None = None
+    use_preferences: bool = True
+
+    @field_validator("description")
+    @classmethod
+    def require_description(cls, value: str) -> str:
+        if len(value.strip()) < 2:
+            raise ValueError("请描述希望关注的内容")
+        return value.strip()
+
+
+class SubscriptionDraft(ApiModel):
+    subscription: SubscriptionPayload
+    explanation: str = Field(min_length=1, max_length=1200)
+    assumptions: list[str] = Field(default_factory=list, max_length=10)
+
+
+class SubscriptionDraftResponse(SubscriptionDraft):
+    hermes_run_id: str
+
+
+class SchedulePreviewRequest(ApiModel):
+    schedule: str = Field(min_length=1, max_length=80)
+
+
+class SchedulePreviewResponse(ApiModel):
+    valid: bool
+    next_runs: list[datetime] = Field(default_factory=list)
+    message: str = ""
 
 
 class ItemStateUpdate(ApiModel):

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Clock3, History, MoreHorizontal, Play, Plus, Search, X } from "lucide-react";
-import { FormEvent, useEffect, useState } from "react";
+import { Check, Clock3, History, Lightbulb, MoreHorizontal, Play, Plus, Search, Sparkles, X } from "lucide-react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "wouter";
 
 import { api } from "../api";
@@ -11,7 +11,7 @@ import { HermesConnection } from "../components/HermesConnection";
 import { HermesPreferences } from "../components/HermesPreferences";
 import { SubscriptionHealth } from "../components/SubscriptionHealth";
 import { SystemDiagnostics } from "../components/SystemDiagnostics";
-import type { IntelligenceKind, Subscription, SubscriptionInput } from "../types";
+import type { IntelligenceKind, SchedulePreviewResponse, Subscription, SubscriptionDraftRequest, SubscriptionDraftResponse, SubscriptionInput, SubscriptionPreset, SubscriptionPresetApplyResult } from "../types";
 import { useModalDialog } from "../useModalDialog";
 
 const emptyForm: SubscriptionInput = {
@@ -30,8 +30,15 @@ const scheduleOptions = [
   { value: "0 8 * * 1", label: "每周一 08:00" },
   { value: "0 8 * * 1-5", label: "工作日 08:00" },
   { value: "0 */6 * * *", label: "每6小时" },
+  { value: "0 9 * * sat", label: "每周六 09:00" },
 ];
 const SUBSCRIPTIONS_PAGE_SIZE = 20;
+const promptOptions = [
+  "只保留一手来源",
+  "必须附原文或代码链接",
+  "标注证据不足的结论",
+  "只提醒重要变化",
+];
 
 function scheduleLabel(schedule: string) {
   return scheduleOptions.find((option) => option.value === schedule)?.label ?? schedule;
@@ -45,6 +52,28 @@ function nextRunLabel(record: Subscription) {
   return `下次${new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }).format(value)}`;
 }
 
+const assistantRules: Array<{ id: string; words: string[]; reason: string }> = [
+  { id: "research-radar", words: ["论文", "研究", "arxiv", "预印本", "实验", "模型", "算法", "benchmark", "科研"], reason: "更适合跟踪论文、实验和研究结论" },
+  { id: "engineering-radar", words: ["工程", "代码", "github", "开源", "版本", "release", "部署", "框架", "性能", "工具"], reason: "更适合跟踪版本发布、开源项目和工程实践" },
+  { id: "people-insights", words: ["访谈", "播客", "演讲", "分享", "观点", "大佬", "创业者", "podcast", "讲座"], reason: "更适合跟踪访谈、演讲和一手观点" },
+];
+
+function assistantSuggestion(text: string, available: SubscriptionPreset[] | undefined) {
+  const normalized = text.trim().toLocaleLowerCase("zh-CN");
+  if (!normalized || !available?.length) return null;
+  const ranked = assistantRules
+    .map((rule) => ({ rule, score: rule.words.reduce((score, word) => score + (normalized.includes(word.toLocaleLowerCase("zh-CN")) ? 1 : 0), 0) }))
+    .sort((a, b) => b.score - a.score);
+  const best = ranked[0];
+  if (!best || best.score === 0) return null;
+  const preset = available.find((item) => item.id === best.rule.id);
+  return preset ? { preset, reason: best.rule.reason, score: best.score } : null;
+}
+
+function configScore(form: SubscriptionInput, keywords: string) {
+  return [form.name.trim(), form.schedule.trim(), form.prompt.trim(), keywords.trim()].filter(Boolean).length;
+}
+
 export function Subscriptions() {
   const [searchParams] = useSearchParams();
   const requestedView = searchParams.get("view");
@@ -55,6 +84,18 @@ export function Subscriptions() {
   const [form, setForm] = useState<SubscriptionInput>(emptyForm);
   const [keywords, setKeywords] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [presetId, setPresetId] = useState("");
+  const [assistantText, setAssistantText] = useState("");
+  const [draftMeta, setDraftMeta] = useState<{ explanation: string; assumptions: string[]; runId: string } | null>(null);
+  const [pendingDraft, setPendingDraft] = useState<SubscriptionDraftResponse | null>(null);
+  const [schedulePreview, setSchedulePreview] = useState<SchedulePreviewResponse | null>(null);
+  const draftFormRef = useRef({ form, keywords });
+  const presets = useQuery({
+    queryKey: ["subscription-presets"],
+    queryFn: () => api.get<SubscriptionPreset[]>("/api/subscription-presets"),
+    enabled: dialogOpen && !editing,
+    staleTime: 300_000,
+  });
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [confirmingPause, setConfirmingPause] = useState<Subscription | null>(null);
   const [search, setSearch] = useState("");
@@ -64,10 +105,20 @@ export function Subscriptions() {
   const [notice, setNotice] = useState<{ tone: "success" | "error"; text: string; action?: { href: string; label: string } } | null>(null);
 
   const save = useMutation({
-    mutationFn: (payload: SubscriptionInput) => editing ? api.put(`/api/subscriptions/${editing.id}`, payload) : api.post("/api/subscriptions", payload),
-    onSuccess: () => {
+    mutationFn: async (payload: SubscriptionInput) => {
+      if (editing) {
+        await api.put(`/api/subscriptions/${editing.id}`, payload);
+      } else if (presetId) {
+        const result = await api.post<SubscriptionPresetApplyResult>(`/api/subscription-presets/${presetId}`, payload);
+        return result.created ? "订阅已创建" : `${result.subscription.name}已存在，保留原有配置`;
+      } else {
+        await api.post("/api/subscriptions", payload);
+      }
+      return editing ? "订阅修改已保存" : "订阅已创建";
+    },
+    onSuccess: (message) => {
       setDialogOpen(false);
-      setNotice({ tone: "success", text: editing ? "订阅修改已保存" : "订阅已创建" });
+      setNotice({ tone: "success", text: message });
       queryClient.invalidateQueries({ queryKey: ["subscriptions"] });
     },
   });
@@ -98,31 +149,58 @@ export function Subscriptions() {
       queryClient.invalidateQueries({ queryKey: ["subscriptions"] });
     },
   });
-  const { dialogRef, rememberTrigger } = useModalDialog<HTMLElement>(dialogOpen, closeDialog, save.isPending || remove.isPending);
+  const draft = useMutation({
+    mutationFn: ({ payload }: { payload: SubscriptionDraftRequest; snapshot: string }) => api.post<SubscriptionDraftResponse>("/api/subscriptions/draft", payload),
+    onSuccess: (result, variables) => {
+      setDraftMeta({ explanation: result.explanation, assumptions: result.assumptions, runId: result.hermesRunId });
+      if (variables.snapshot === JSON.stringify(draftFormRef.current)) {
+        applyDraftResult(result);
+      } else {
+        setPendingDraft(result);
+      }
+    },
+  });
+  const preview = useMutation({
+    mutationFn: (schedule: string) => api.post<SchedulePreviewResponse>("/api/subscriptions/preview-schedule", { schedule }),
+    onSuccess: (result) => setSchedulePreview(result),
+  });
+  const { dialogRef, rememberTrigger } = useModalDialog<HTMLElement>(dialogOpen, closeDialog, save.isPending || remove.isPending || draft.isPending);
   const { dialogRef: pauseDialogRef, rememberTrigger: rememberPauseTrigger } = useModalDialog<HTMLDivElement>(Boolean(confirmingPause), closePauseDialog, update.isPending);
 
   function openNew(trigger: HTMLElement) {
     rememberTrigger(trigger);
     setEditing(null);
     setForm(emptyForm);
+    setPresetId("");
+    setAssistantText("");
+    setDraftMeta(null);
+    setPendingDraft(null);
+    setSchedulePreview(null);
     setKeywords("");
     setConfirmingDelete(false);
     save.reset();
+    draft.reset();
     setDialogOpen(true);
   }
 
   function openEdit(record: Subscription, trigger: HTMLElement) {
     rememberTrigger(trigger);
     setEditing(record);
+    setPresetId("");
+    setAssistantText("");
+    setDraftMeta(null);
+    setPendingDraft(null);
+    setSchedulePreview(null);
     setForm({ name: record.name, kind: record.kind, keywords: record.keywords, schedule: record.schedule, prompt: record.prompt, enabled: record.enabled });
     setKeywords(record.keywords.join(", "));
     setConfirmingDelete(false);
     save.reset();
+    draft.reset();
     setDialogOpen(true);
   }
 
   function closeDialog() {
-    if (save.isPending || remove.isPending) return;
+    if (save.isPending || remove.isPending || draft.isPending) return;
     setConfirmingDelete(false);
     setDialogOpen(false);
   }
@@ -138,8 +216,73 @@ export function Subscriptions() {
 
   function submit(event: FormEvent) {
     event.preventDefault();
+    if (draft.isPending) return;
     save.mutate({ ...form, keywords: keywords.split(/[,，]/).map((value) => value.trim()).filter(Boolean) });
   }
+
+  function selectPreset(id: string) {
+    const preset = presets.data?.find((item) => item.id === id);
+    setPresetId(id);
+    setForm(preset ? { name: preset.name, kind: preset.kind, keywords: preset.keywords, schedule: preset.schedule, prompt: preset.prompt, enabled: preset.enabled } : emptyForm);
+    setKeywords(preset?.keywords.join(", ") ?? "");
+    setDraftMeta(null);
+    setPendingDraft(null);
+    setSchedulePreview(null);
+    save.reset();
+  }
+
+  function applyAssistantSuggestion() {
+    const suggestion = assistantSuggestion(assistantText, presets.data);
+    if (!suggestion) return;
+    selectPreset(suggestion.preset.id);
+  }
+
+  function generateDraft() {
+    const description = assistantText.trim();
+    if (!description || draft.isPending) return;
+    const currentKeywords = keywords.split(/[,，]/).map((value) => value.trim()).filter(Boolean);
+    const hasCurrent = Boolean(form.name.trim() || form.prompt.trim() || currentKeywords.length);
+    const payload: SubscriptionDraftRequest = {
+      description,
+      current: hasCurrent ? {
+        name: form.name.trim() || undefined,
+        kind: form.kind,
+        keywords: currentKeywords,
+        schedule: form.schedule.trim() || undefined,
+        prompt: form.prompt.trim() || undefined,
+        enabled: form.enabled,
+      } : null,
+      usePreferences: true,
+    };
+    draft.mutate({ payload, snapshot: JSON.stringify(draftFormRef.current) });
+  }
+
+  function applyDraftResult(result: SubscriptionDraftResponse) {
+    setForm(result.subscription);
+    setKeywords(result.subscription.keywords.join(", "));
+    setPresetId("");
+    setPendingDraft(null);
+    setSchedulePreview(null);
+    save.reset();
+  }
+
+  function previewSchedule() {
+    if (!form.schedule.trim() || preview.isPending) return;
+    preview.mutate(form.schedule.trim());
+  }
+
+  function addPromptOption(option: string) {
+    if (form.prompt.includes(option)) return;
+    setForm({ ...form, prompt: `${form.prompt.trim()}${form.prompt.trim() ? "\n" : ""}${option}。` });
+  }
+
+  const selectedPreset = presets.data?.find((item) => item.id === presetId);
+  const suggestion = assistantSuggestion(assistantText, presets.data);
+  const completedFields = configScore(form, keywords);
+
+  useEffect(() => {
+    draftFormRef.current = { form, keywords };
+  }, [form, keywords]);
 
   const schedulePreset = scheduleOptions.some((option) => option.value === form.schedule) ? form.schedule : "custom";
   const normalizedSearch = search.trim().toLocaleLowerCase("zh-CN");
@@ -213,7 +356,7 @@ export function Subscriptions() {
         <section ref={dialogRef} className="dialog-panel" role="dialog" aria-modal="true" aria-labelledby="subscription-dialog-title" aria-describedby={confirmingDelete ? "subscription-delete-description" : undefined}>
           <div className="dialog-heading">
             <h2 id="subscription-dialog-title">{confirmingDelete ? "删除订阅" : editing ? "编辑订阅" : "新建订阅"}</h2>
-            <button className="icon-button" onClick={closeDialog} aria-label="关闭" disabled={save.isPending || remove.isPending}><X size={19} /></button>
+            <button className="icon-button" onClick={closeDialog} aria-label="关闭" disabled={save.isPending || remove.isPending || draft.isPending} title={draft.isPending ? "等待Hermes生成完成" : "关闭"}><X size={19} /></button>
           </div>
           {confirmingDelete && editing ? <div className="confirm-delete">
             <p>删除“{editing.name}”？</p>
@@ -224,16 +367,35 @@ export function Subscriptions() {
               <button type="button" className="danger-button" onClick={() => remove.mutate(editing.id)} disabled={remove.isPending}>{remove.isPending ? "正在删除" : "确认删除订阅"}</button>
             </div>
           </div> : <form onSubmit={submit} className="subscription-form">
+            {!editing && <section className="subscription-assistant" aria-labelledby="subscription-assistant-title">
+              <div className="subscription-assistant-heading"><div><span className="assistant-kicker"><Sparkles size={14} />智能配置</span><strong id="subscription-assistant-title">说说你想持续关注什么</strong></div><span className="assistant-step">先描述，再微调</span></div>
+              <div className="assistant-input-row"><input aria-label="描述关注目标" value={assistantText} onChange={(event) => { setAssistantText(event.target.value); if (draft.isError) draft.reset(); }} placeholder="例如：我想每天看Agent论文和开源框架更新" /><div className="assistant-actions"><button type="button" className="secondary-compact" onClick={applyAssistantSuggestion} disabled={!suggestion || draft.isPending}>应用建议</button><button type="button" className="primary-compact" onClick={generateDraft} disabled={!assistantText.trim() || draft.isPending}>{draft.isPending ? "Hermes生成中" : "生成可编辑草稿"}</button></div></div>
+              {suggestion ? <div className="assistant-suggestion" role="status"><Check size={16} /><span>建议使用“{suggestion.preset.name}”，{suggestion.reason}。</span></div> : assistantText.trim() ? <div className="assistant-suggestion muted" role="status"><Lightbulb size={16} /><span>暂时没有匹配模板，你可以继续手动配置，或换一种说法。</span></div> : <div className="assistant-examples"><button type="button" onClick={() => setAssistantText("我想跟踪大模型和Agent最新论文")}>论文与研究</button><button type="button" onClick={() => setAssistantText("我想看GitHub上的AI工程和版本更新")}>工程与开源</button><button type="button" onClick={() => setAssistantText("我想听AI研究者和创业者的深度访谈")}>访谈与分享</button></div>}
+              {draft.isError && <div className="assistant-suggestion muted" role="alert"><Lightbulb size={16} /><span>{draft.error.message}。模板和手动配置仍可继续使用。</span></div>}
+              {draftMeta && <div className="assistant-draft-result" role="status"><div><Check size={16} /><span>{draftMeta.explanation}</span></div>{draftMeta.assumptions.length > 0 && <small>默认处理：{draftMeta.assumptions.join("；")}</small>}</div>}
+              {pendingDraft && <div className="assistant-draft-pending" role="status"><span>草稿已生成，但你在等待期间修改了当前填写。</span><button type="button" className="secondary-compact" onClick={() => applyDraftResult(pendingDraft)}>应用草稿</button></div>}
+            </section>}
+            {!editing && <div className="form-field">
+              <label htmlFor="subscription-preset">从模板开始</label>
+              <select id="subscription-preset" value={presetId} onChange={(event) => selectPreset(event.target.value)} disabled={presets.isPending || save.isPending || draft.isPending}>
+                <option value="">{presets.isPending ? "模板加载中" : "自定义订阅"}</option>
+                {presets.data?.map((preset) => <option key={preset.id} value={preset.id}>{preset.name}</option>)}
+              </select>
+              {presets.isError && <div className="inline-error" role="alert">模板加载失败，可继续手动填写。<button type="button" onClick={() => presets.refetch()}>重新加载模板</button></div>}
+            </div>}
+            {selectedPreset && <div className="subscription-preset-info"><p>{selectedPreset.description}</p><p>优先来源：{selectedPreset.sources.join("、")}</p></div>}
             <div className="form-field"><label htmlFor="subscription-name">订阅名称</label><input id="subscription-name" autoFocus value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="例如：Agent论文周报" required maxLength={100} /></div>
-            <div className="form-grid">
+              <div className="form-grid">
               <div className="form-field"><label htmlFor="subscription-kind">类型</label><select id="subscription-kind" value={form.kind} onChange={(event) => setForm({ ...form, kind: event.target.value as IntelligenceKind })}><option value="news">热点</option><option value="paper">论文</option><option value="job">招聘</option></select></div>
-              <div className="form-field"><label htmlFor="subscription-schedule">执行周期</label><select id="subscription-schedule" value={schedulePreset} onChange={(event) => setForm({ ...form, schedule: event.target.value === "custom" ? "" : event.target.value })}>{scheduleOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}<option value="custom">自定义Cron</option></select></div>
+              <div className="form-field"><label htmlFor="subscription-schedule">执行周期</label><select id="subscription-schedule" value={schedulePreset} onChange={(event) => { const schedule = event.target.value === "custom" ? "" : event.target.value; setForm({ ...form, schedule }); setSchedulePreview(null); }}>{scheduleOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}<option value="custom">自定义Cron</option></select></div>
             </div>
-            {schedulePreset === "custom" && <div className="form-field"><label htmlFor="subscription-cron">自定义Cron</label><input id="subscription-cron" value={form.schedule} onChange={(event) => setForm({ ...form, schedule: event.target.value })} placeholder="例如：0 9 * * 1-5" required /></div>}
+            {schedulePreset === "custom" && <div className="form-field"><label htmlFor="subscription-cron">自定义Cron</label><div className="schedule-preview-row"><input id="subscription-cron" value={form.schedule} onChange={(event) => { setForm({ ...form, schedule: event.target.value }); setSchedulePreview(null); }} placeholder="例如：0 9 * * 1-5" required /><button type="button" className="secondary-compact" onClick={previewSchedule} disabled={!form.schedule.trim() || preview.isPending}>{preview.isPending ? "计算中" : "预览执行"}</button></div></div>}
+            <p className="subscription-schedule-note">按北京时间执行；保存后自动启用，首次运行按执行周期安排。{schedulePreview?.valid ? `未来3次：${schedulePreview.nextRuns.map((run) => new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(run))).join("、")}` : schedulePreview?.message ? schedulePreview.message : ""}</p>
             <div className="form-field"><label htmlFor="subscription-keywords">关键词</label><input id="subscription-keywords" value={keywords} onChange={(event) => setKeywords(event.target.value)} placeholder="例如：Agent, RAG, Tool Use" /></div>
-            <div className="form-field"><label htmlFor="subscription-prompt">Hermes任务说明</label><textarea id="subscription-prompt" rows={6} value={form.prompt} onChange={(event) => setForm({ ...form, prompt: event.target.value })} placeholder="例如：检索过去7天的重要论文，说明核心方法、实验结果和推荐理由" required maxLength={4000} /></div>
+            <div className="form-field"><label htmlFor="subscription-prompt">Hermes任务说明</label><textarea id="subscription-prompt" rows={6} value={form.prompt} onChange={(event) => setForm({ ...form, prompt: event.target.value })} placeholder="例如：检索过去7天的重要论文，说明核心方法、实验结果和推荐理由" required maxLength={10000} /><div className="prompt-options" aria-label="快速补充要求">{promptOptions.map((option) => <button type="button" key={option} className={form.prompt.includes(option) ? "selected" : ""} onClick={() => addPromptOption(option)}>{form.prompt.includes(option) ? <Check size={14} /> : <Plus size={14} />}{option}</button>)}</div></div>
+            <div className="subscription-readiness" aria-label="订阅配置完成度"><div><span>配置完成度</span><strong>{completedFields}/4</strong></div><div className="readiness-track"><span style={{ width: `${completedFields * 25}%` }} /></div><small>{completedFields === 4 ? "信息完整，可以保存并开始监测" : "补齐名称、周期、关键词和任务说明，结果会更准确"}</small></div>
             {save.isError && <p className="form-error" role="alert">{save.error.message}。请检查填写内容后重试。</p>}
-            <div className="dialog-actions">{editing && <button type="button" className="danger-button" onClick={() => setConfirmingDelete(true)}>删除订阅</button>}<button className="primary-button" type="submit" disabled={save.isPending}>{save.isPending ? "正在保存" : "保存订阅"}</button></div>
+            <div className="dialog-actions">{editing && <button type="button" className="danger-button" onClick={() => setConfirmingDelete(true)} disabled={draft.isPending}>删除订阅</button>}<button className="primary-button" type="submit" disabled={save.isPending || draft.isPending}>{draft.isPending ? "等待Hermes生成" : save.isPending ? "正在保存" : "保存订阅"}</button></div>
           </form>}
         </section>
       </div>}

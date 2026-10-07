@@ -697,8 +697,48 @@ button:disabled { cursor: wait; }
 .dialog-heading { min-height: 40px; display: flex; align-items: center; justify-content: space-between; }
 .dialog-heading h2 { margin: 0; font-size: 19px; }
 .subscription-form { display: grid; gap: 14px; margin-top: 14px; }
+.subscription-assistant { display: grid; gap: 12px; padding: 14px; border: 1px solid #b9d8c8; border-radius: 10px; background: #f2f9f5; }
+.subscription-assistant-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.subscription-assistant-heading > div { min-width: 0; display: grid; gap: 4px; }
+.assistant-kicker { display: inline-flex; align-items: center; gap: 5px; color: var(--signal); font-size: 12px; font-weight: 800; letter-spacing: .03em; }
+.subscription-assistant-heading strong { color: var(--ink); font-size: 16px; line-height: 1.4; }
+.assistant-step { flex: 0 0 auto; color: var(--muted); font-size: 12px; line-height: 1.4; }
+.assistant-input-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.assistant-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.assistant-actions button { white-space: nowrap; }
+.assistant-input-row input { min-width: 0; height: 44px; padding: 0 11px; border: 1px solid #a9cdb9; border-radius: 7px; background: white; color: var(--ink); font: inherit; }
+.assistant-input-row input:focus { outline: 2px solid #9dc9b5; outline-offset: 1px; border-color: var(--signal); }
+.assistant-input-row .secondary-compact { border-color: #a9cdb9; color: var(--signal); background: white; }
+.assistant-input-row .secondary-compact:disabled { color: var(--muted); background: #edf3ef; }
+.assistant-suggestion { display: flex; align-items: flex-start; gap: 7px; padding: 9px 10px; border-radius: 7px; background: white; color: var(--signal); font-size: 14px; line-height: 1.55; }
+.assistant-suggestion svg { flex: 0 0 auto; margin-top: 3px; }
+.assistant-suggestion.muted { color: var(--ink-soft); background: rgba(255,255,255,.58); }
+.assistant-draft-result { display: grid; gap: 4px; padding: 10px; border-radius: 7px; background: #e5f4eb; color: var(--signal); font-size: 14px; line-height: 1.55; }
+.assistant-draft-result > div { display: flex; align-items: flex-start; gap: 7px; }
+.assistant-draft-result svg { flex: 0 0 auto; margin-top: 3px; }
+.assistant-draft-result small { padding-left: 23px; color: var(--ink-soft); }
+.assistant-draft-pending { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px; border: 1px solid #e5c98c; border-radius: 7px; background: #fff8e7; color: var(--ink-soft); font-size: 14px; line-height: 1.5; }
+.assistant-draft-pending button { flex: 0 0 auto; }
+.assistant-examples { display: flex; flex-wrap: wrap; gap: 6px; }
+.assistant-examples button { min-height: 32px; padding: 0 9px; border: 1px solid #b9d8c8; border-radius: 999px; background: transparent; color: var(--ink-soft); font: inherit; font-size: 13px; }
+.assistant-examples button:hover { border-color: var(--signal); color: var(--signal); background: white; }
+.subscription-preset-info { display: grid; gap: 6px; padding: 12px; border-radius: 8px; background: var(--signal-soft); color: var(--ink-soft); font-size: 15px; line-height: 1.6; overflow-wrap: anywhere; }
+.subscription-preset-info p, .subscription-schedule-note { margin: 0; }
+.subscription-schedule-note { color: var(--ink-soft); font-size: 14px; line-height: 1.6; }
+.schedule-preview-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.schedule-preview-row input { min-width: 0; }
+.subscription-readiness { display: grid; gap: 7px; padding: 11px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-subtle); }
+.subscription-readiness > div:first-child { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--ink-soft); font-size: 13px; }
+.subscription-readiness strong { color: var(--signal); font-size: 14px; }
+.readiness-track { height: 5px; overflow: hidden; border-radius: 4px; background: #dfe8e2; }
+.readiness-track span { display: block; height: 100%; border-radius: inherit; background: var(--signal); transition: width .2s ease-out; }
+.subscription-readiness small { color: var(--muted); line-height: 1.45; }
 .form-field { display: grid; gap: 6px; font-size: 13px; font-weight: 700; color: var(--ink-soft); }
 .form-field textarea { resize: vertical; min-height: 120px; line-height: 1.6; }
+.prompt-options { display: flex; flex-wrap: wrap; gap: 6px; }
+.prompt-options button { min-height: 32px; display: inline-flex; align-items: center; gap: 4px; padding: 0 9px; border: 1px solid var(--line); border-radius: 999px; background: var(--paper); color: var(--ink-soft); font: inherit; font-size: 13px; }
+.prompt-options button:hover, .prompt-options button.selected { border-color: var(--signal-border-strong); background: var(--signal-soft); color: var(--signal); }
+.prompt-options button.selected { font-weight: 700; }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 4px; }
 .dialog-actions .primary-button { min-width: 110px; }
@@ -843,6 +883,14 @@ button:disabled { cursor: wait; }
   .report-actions .report-regenerate { grid-column: 1 / -1; }
   .subscription-tools { grid-template-columns: minmax(0, 1fr) 112px; gap: 8px; }
   .subscription-tools > select { width: 112px; padding-left: 10px; }
+  .subscription-assistant-heading { flex-direction: column; gap: 2px; }
+  .assistant-step { font-size: 13px; }
+  .assistant-input-row { grid-template-columns: 1fr; }
+  .assistant-actions { display: grid; grid-template-columns: 1fr 1fr; }
+  .assistant-actions button { width: 100%; }
+  .assistant-examples { display: grid; grid-template-columns: 1fr; }
+  .assistant-examples button { text-align: left; }
+  .schedule-preview-row { grid-template-columns: 1fr; }
   .subscription-filter-row { align-items: flex-start; flex-direction: column; }
   .settings-view-bar { align-items: stretch; flex-direction: column; gap: 8px; }
   .settings-view-tabs { width: 100%; display: grid; grid-template-columns: .85fr 1.3fr 1fr; }

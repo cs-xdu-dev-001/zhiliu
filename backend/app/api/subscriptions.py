@@ -1,3 +1,4 @@
+import asyncio
 import json
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -8,8 +9,14 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
+from app.core.config import Settings, get_settings
+from app.core.crypto import SecretDecryptionError
 from app.models import Subscription
-from app.schemas import SubscriptionPayload, SubscriptionResponse
+from app.schemas import (SchedulePreviewRequest, SchedulePreviewResponse, SubscriptionDraftRequest,
+                         SubscriptionDraftResponse, SubscriptionPayload, SubscriptionResponse)
+from app.services.hermes import DemoSubscriptionDraftClient, HermesError, HermesInvalidOutput, HermesTimeout, HermesUnavailable
+from app.services.hermes_integration import HermesIntegrationService
+from app.services.preferences import PreferenceService
 from app.services.scheduler import refresh_subscription_job
 
 router = APIRouter(prefix="/api/subscriptions", tags=["subscriptions"])
@@ -18,10 +25,7 @@ router = APIRouter(prefix="/api/subscriptions", tags=["subscriptions"])
 def serialize_subscription(record: Subscription) -> SubscriptionResponse:
     next_run_at = None
     if record.enabled:
-        next_run_at = croniter(
-            record.schedule,
-            datetime.now(ZoneInfo("Asia/Shanghai")),
-        ).get_next(datetime)
+        next_run_at = croniter(record.schedule, datetime.now(ZoneInfo("Asia/Shanghai"))).get_next(datetime)
     return SubscriptionResponse(
         id=record.id,
         name=record.name,
@@ -68,6 +72,46 @@ def get_subscription_or_404(db: Session, subscription_id: int) -> Subscription:
     if record is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="订阅不存在")
     return record
+
+
+@router.post("/preview-schedule", response_model=SchedulePreviewResponse)
+def preview_schedule(payload: SchedulePreviewRequest) -> SchedulePreviewResponse:
+    try:
+        schedule = SubscriptionPayload.validate_schedule(payload.schedule)
+        iterator = croniter(schedule, datetime.now(ZoneInfo("Asia/Shanghai")))
+        runs = [iterator.get_next(datetime) for _ in range(3)]
+        return SchedulePreviewResponse(valid=True, next_runs=runs)
+    except ValueError as exc:
+        return SchedulePreviewResponse(valid=False, message=str(exc))
+
+
+def demo_draft_client(_):
+    return DemoSubscriptionDraftClient()
+
+
+@router.post("/draft", response_model=SubscriptionDraftResponse)
+async def draft_subscription(
+    payload: SubscriptionDraftRequest,
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> SubscriptionDraftResponse:
+    try:
+        client = HermesIntegrationService(db, settings).resolve_client(None, demo_draft_client)
+        rules = PreferenceService(db).list(kind=payload.current.kind if payload.current else None) if payload.use_preferences else []
+        context = {
+            "description": payload.description,
+            "current": payload.current.model_dump(exclude_none=True) if payload.current else None,
+            "preferences": [{"scope": rule.scope, "effect": rule.effect, "value": rule.value, "kind": rule.kind} for rule in rules[:30]],
+        }
+        # Do not hold a database read transaction while Hermes drafts the configuration.
+        db.rollback()
+        return await asyncio.wait_for(client.draft_subscription(json.dumps(context, ensure_ascii=False)), timeout=45)
+    except (TimeoutError, HermesTimeout) as exc:
+        raise HTTPException(status_code=504, detail="配置生成超时，原有填写内容已保留，可稍后重试") from exc
+    except (HermesUnavailable, SecretDecryptionError) as exc:
+        raise HTTPException(status_code=503, detail="Hermes暂不可用，请检查连接；可继续使用模板或手动填写") from exc
+    except (HermesInvalidOutput, HermesError) as exc:
+        raise HTTPException(status_code=502, detail="Hermes未生成有效配置，请调整描述后重试") from exc
 
 
 @router.get("/{subscription_id}", response_model=SubscriptionResponse)
