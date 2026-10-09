@@ -142,6 +142,7 @@ def build_mcp_server(
         keywords: list[str],
         schedule: str,
         prompt: str,
+        notify_wechat: bool | None = None,
     ) -> MonitorReceipt:
         """仅在用户明确要求持续关注或定期整理时创建长期监测。"""
         payload = MonitorPayload(
@@ -150,6 +151,7 @@ def build_mcp_server(
             keywords=keywords,
             schedule=schedule,
             prompt=prompt,
+            notify_wechat=notify_wechat,
         )
         with session_factory() as db:
             return MonitorService(db).create(payload)

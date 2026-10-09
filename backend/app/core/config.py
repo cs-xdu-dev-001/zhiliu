@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     hermes_base_url: str = "http://127.0.0.1:8642"
     hermes_api_key: str = ""
     hermes_timeout_seconds: int = 180
+    # Enable after installing the host-side Hermes delivery worker.
+    weixin_push_enabled: bool = False
     integration_secret_key: str = "development-integration-secret-key-32"
     zhiliu_mcp_token: str = "development-zhiliu-mcp-token-change-me"
     public_base_url: str = ""

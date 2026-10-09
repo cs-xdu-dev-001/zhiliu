@@ -30,6 +30,7 @@ class Subscription(Base):
     schedule: Mapped[str] = mapped_column(String(80))
     prompt: Mapped[str] = mapped_column(Text)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    notify_wechat: Mapped[bool] = mapped_column(Boolean, default=False)
     last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
@@ -346,6 +347,12 @@ class TaskRun(Base):
     report_item_ids_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     report_series_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
     report_version_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    notification_status: Mapped[str] = mapped_column(String(30), default="not_requested")
+    notification_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    notification_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    notification_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    notification_token: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    notification_claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     subscription: Mapped[Subscription] = relationship(back_populates="runs")
 

@@ -69,6 +69,7 @@ def apply_subscription_preset(
             schedule=values.schedule,
             prompt=values.prompt,
             enabled=values.enabled,
+            notify_wechat=values.notify_wechat,
         )
         db.add(record)
         db.commit()

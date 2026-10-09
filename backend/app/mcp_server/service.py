@@ -594,6 +594,8 @@ class MonitorService:
             if existing is not None:
                 existing.keywords_json = keywords_json
                 existing.enabled = True
+                if payload.notify_wechat is not None:
+                    existing.notify_wechat = payload.notify_wechat
                 self.db.commit()
                 return MonitorReceipt(subscription_id=existing.id, created=False)
 
@@ -605,6 +607,7 @@ class MonitorService:
                 schedule=payload.schedule,
                 prompt=payload.prompt,
                 enabled=True,
+                notify_wechat=bool(payload.notify_wechat),
             )
             self.db.add(record)
             self.db.flush()

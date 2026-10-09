@@ -234,6 +234,7 @@ export interface Subscription {
   schedule: string;
   prompt: string;
   enabled: boolean;
+  notifyWechat?: boolean;
   lastRunAt: string | null;
   nextRunAt: string | null;
   createdAt: string;
@@ -283,6 +284,9 @@ export interface TaskRun {
   topic: string | null;
   requestSummary: string | null;
   status: "queued" | "running" | "success" | "failed" | "cancelled";
+  notificationStatus?: string;
+  notificationError?: string | null;
+  notificationSentAt?: string | null;
   stage: "accepted" | "processing" | "understanding" | "searching" | "organizing" | "publishing" | "completed" | "failed" | "cancelled" | "lost";
   resultSummary: string | null;
   startedAt: string;

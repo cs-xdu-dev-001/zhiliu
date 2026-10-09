@@ -5,6 +5,8 @@ server {
     # TLS与访问控制由宿主机现有站点统一配置。
     location = /api/mcp { return 404; }
     location ^~ /api/mcp/ { return 404; }
+    location = /api/internal/weixin { return 404; }
+    location ^~ /api/internal/weixin/ { return 404; }
 
     location / {
         proxy_pass http://127.0.0.1:8080;

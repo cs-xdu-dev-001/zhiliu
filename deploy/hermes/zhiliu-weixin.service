@@ -1,0 +1,20 @@
+[Unit]
+Description=Zhiliu subscription Weixin delivery via Hermes
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/zhiliu
+Environment=ZHILIU_ROOT=/opt/zhiliu
+Environment=HERMES_CLI_PATH=/root/.local/bin/hermes
+Environment=HERMES_HOME=/root/.hermes
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 /opt/zhiliu/deploy/hermes/weixin_delivery.py
+Restart=on-failure
+RestartSec=10
+KillMode=control-group
+
+[Install]
+WantedBy=multi-user.target

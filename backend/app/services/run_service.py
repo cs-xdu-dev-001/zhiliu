@@ -11,6 +11,8 @@ from sqlalchemy.orm import Session
 from app.models import Briefing, HermesPublication, IntelligenceItem, ItemChange, PublicationItem, TaskRun
 from app.services.change_detection import ChangeInput, apply_snapshot, content_snapshot, incoming_snapshot, meaningful_change, record_automatic_revision, record_change
 from app.services.hermes import HermesClient, HermesTimeout, HermesUnavailable
+from app.core.config import Settings, get_settings
+from app.services.hermes_notify import prepare_notification
 from app.services.quality import record_quality_decisions
 from app.services.topics import link_item_topics
 from app.services.personalization import recalculate
@@ -48,9 +50,10 @@ def canonical_item(db: Session, item: IntelligenceItem) -> IntelligenceItem:
 
 
 class RunService:
-    def __init__(self, db: Session, hermes_client: HermesClient) -> None:
+    def __init__(self, db: Session, hermes_client: HermesClient, *, settings: Settings | None = None) -> None:
         self.db = db
         self.hermes_client = hermes_client
+        self.settings = settings or get_settings()
 
     async def execute_task(self, task_id: int) -> None:
         task = self.db.get(TaskRun, task_id)
@@ -64,6 +67,10 @@ class RunService:
         task.topic = task.topic or task.subscription.name
         task.request_summary = task.request_summary or task.subscription.prompt[:1000]
         task.error_message = None
+        task.notification_error = None
+        task.notification_sent_at = None
+        task.notification_status = "not_requested"
+        task.hermes_run_id = None
         self.db.commit()
         started = time.perf_counter()
 
@@ -179,6 +186,7 @@ class RunService:
                 f"新增{inserted}条情报，更新{sum(event.change_type == 'important_update' for event in change_events)}条，复用{sum(event.change_type == 'duplicate_message' for event in change_events)}条，"
                 f"生成报告《{briefing.title}》"
             )
+            prepare_notification(task, briefing, [item for item, _ in resolved_items], self.settings)
         except (HermesUnavailable, HermesTimeout) as exc:
             self.db.rollback()
             task = self.db.get(TaskRun, task_id)
@@ -192,12 +200,14 @@ class RunService:
                 task.error_message = f"第{task.retry_count}次尝试失败，将自动重试：{str(exc)[:1800]}"
                 task.finished_at = None
                 task.duration_ms = None
+                task.notification_status = "not_requested"
                 retrying = True
             else:
                 task.status = "failed"
                 task.stage = "failed"
                 task.heartbeat_at = datetime.now(timezone.utc)
                 task.error_message = str(exc)[:2000]
+                task.notification_status = "not_requested"
         except Exception as exc:
             self.db.rollback()
             task = self.db.get(TaskRun, task_id)
@@ -207,6 +217,7 @@ class RunService:
             task.stage = "failed"
             task.heartbeat_at = datetime.now(timezone.utc)
             task.error_message = str(exc)[:2000]
+            task.notification_status = "not_requested"
         finally:
             if not retrying:
                 task.finished_at = datetime.now(timezone.utc)

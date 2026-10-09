@@ -38,6 +38,7 @@ class SubscriptionPayload(ApiModel):
     schedule: str = Field(min_length=1, max_length=80)
     prompt: str = Field(min_length=1, max_length=10000)
     enabled: bool = True
+    notify_wechat: bool = False
 
     @field_validator("schedule")
     @classmethod
@@ -93,6 +94,7 @@ class SubscriptionDraftCurrent(ApiModel):
     schedule: str | None = Field(default=None, max_length=80)
     prompt: str | None = Field(default=None, max_length=10000)
     enabled: bool | None = None
+    notify_wechat: bool | None = None
 
     @field_validator("name", "prompt", mode="before")
     @classmethod
@@ -782,6 +784,9 @@ class TaskRunResponse(ApiModel):
     publication_id: int | None = None
     briefing_id: int | None = None
     retry_count: int = 0
+    notification_status: str = "not_requested"
+    notification_error: str | None = None
+    notification_sent_at: datetime | None = None
 
 
 class TaskRunPage(ApiModel):

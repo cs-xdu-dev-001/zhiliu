@@ -7,8 +7,10 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db import get_db
+from app.core.config import Settings, get_settings
 from app.models import Briefing, HermesPublication, Subscription, TaskRun
 from app.schemas import TaskRunPage, TaskRunResponse
+from app.services.hermes_notify import requeue_notification
 
 router = APIRouter(prefix="/api", tags=["runs"])
 
@@ -40,6 +42,9 @@ def _task_run_response(
         publication_id=publication.id if publication else None,
         briefing_id=publication.briefing_id if publication else None,
         retry_count=record.retry_count,
+        notification_status=record.notification_status,
+        notification_error=record.notification_error,
+        notification_sent_at=record.notification_sent_at,
     )
 
 
@@ -179,6 +184,24 @@ def retry_failed_run(run_id: int, db: Session = Depends(get_db)) -> TaskRunRespo
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="重试任务与现有任务冲突")
     db.refresh(retry)
     return serialize_task_run(db, retry)
+
+
+@router.post("/runs/{run_id}/notify", response_model=TaskRunResponse)
+def retry_weixin_notification(
+    run_id: int,
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> TaskRunResponse:
+    record = db.get(TaskRun, run_id)
+    if record is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务不存在")
+    if record.status != "success":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="只有已完成任务可以重试微信推送")
+    try:
+        requeue_notification(db, record, settings)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return serialize_task_run(db, record)
 
 
 @router.post("/runs/{run_id}/cancel", response_model=TaskRunResponse)

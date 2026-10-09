@@ -34,6 +34,7 @@ def serialize_subscription(record: Subscription) -> SubscriptionResponse:
         schedule=record.schedule,
         prompt=record.prompt,
         enabled=record.enabled,
+        notify_wechat=record.notify_wechat,
         last_run_at=record.last_run_at,
         next_run_at=next_run_at,
         created_at=record.created_at,
@@ -59,6 +60,7 @@ def create_subscription(
         schedule=payload.schedule,
         prompt=payload.prompt,
         enabled=payload.enabled,
+        notify_wechat=payload.notify_wechat,
     )
     db.add(record)
     db.commit()
@@ -132,6 +134,7 @@ def update_subscription(
     record.schedule = payload.schedule
     record.prompt = payload.prompt
     record.enabled = payload.enabled
+    record.notify_wechat = payload.notify_wechat
     db.commit()
     db.refresh(record)
     refresh_subscription_job(record.id)

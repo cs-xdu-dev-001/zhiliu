@@ -15,7 +15,7 @@ import type { IntelligenceKind, SchedulePreviewResponse, Subscription, Subscript
 import { useModalDialog } from "../useModalDialog";
 
 const emptyForm: SubscriptionInput = {
-  name: "", kind: "news", keywords: [], schedule: "0 8 * * *", prompt: "", enabled: true,
+  name: "", kind: "news", keywords: [], schedule: "0 8 * * *", prompt: "", enabled: true, notifyWechat: false,
 };
 
 const kindNames: Record<IntelligenceKind, string> = { news: "热点", paper: "论文", job: "招聘" };
@@ -123,7 +123,7 @@ export function Subscriptions() {
     },
   });
   const update = useMutation({
-    mutationFn: ({ record, patch }: { record: Subscription; patch: Partial<SubscriptionInput> }) => api.put(`/api/subscriptions/${record.id}`, { name: record.name, kind: record.kind, keywords: record.keywords, schedule: record.schedule, prompt: record.prompt, enabled: record.enabled, ...patch }),
+    mutationFn: ({ record, patch }: { record: Subscription; patch: Partial<SubscriptionInput> }) => api.put(`/api/subscriptions/${record.id}`, { name: record.name, kind: record.kind, keywords: record.keywords, schedule: record.schedule, prompt: record.prompt, enabled: record.enabled, notifyWechat: record.notifyWechat ?? false, ...patch }),
     onSuccess: (_, { record, patch }) => {
       setConfirmingPause(null);
       setNotice({ tone: "success", text: patch.enabled === false ? `${record.name}已暂停` : `${record.name}已启用` });
@@ -191,7 +191,7 @@ export function Subscriptions() {
     setDraftMeta(null);
     setPendingDraft(null);
     setSchedulePreview(null);
-    setForm({ name: record.name, kind: record.kind, keywords: record.keywords, schedule: record.schedule, prompt: record.prompt, enabled: record.enabled });
+    setForm({ name: record.name, kind: record.kind, keywords: record.keywords, schedule: record.schedule, prompt: record.prompt, enabled: record.enabled, notifyWechat: record.notifyWechat ?? false });
     setKeywords(record.keywords.join(", "));
     setConfirmingDelete(false);
     save.reset();
@@ -223,7 +223,7 @@ export function Subscriptions() {
   function selectPreset(id: string) {
     const preset = presets.data?.find((item) => item.id === id);
     setPresetId(id);
-    setForm(preset ? { name: preset.name, kind: preset.kind, keywords: preset.keywords, schedule: preset.schedule, prompt: preset.prompt, enabled: preset.enabled } : emptyForm);
+    setForm(preset ? { name: preset.name, kind: preset.kind, keywords: preset.keywords, schedule: preset.schedule, prompt: preset.prompt, enabled: preset.enabled, notifyWechat: preset.notifyWechat ?? false } : emptyForm);
     setKeywords(preset?.keywords.join(", ") ?? "");
     setDraftMeta(null);
     setPendingDraft(null);
@@ -251,6 +251,7 @@ export function Subscriptions() {
         schedule: form.schedule.trim() || undefined,
         prompt: form.prompt.trim() || undefined,
         enabled: form.enabled,
+        notifyWechat: form.notifyWechat,
       } : null,
       usePreferences: true,
     };
@@ -393,6 +394,7 @@ export function Subscriptions() {
             <p className="subscription-schedule-note">按北京时间执行；保存后自动启用，首次运行按执行周期安排。{schedulePreview?.valid ? `未来3次：${schedulePreview.nextRuns.map((run) => new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(run))).join("、")}` : schedulePreview?.message ? schedulePreview.message : ""}</p>
             <div className="form-field"><label htmlFor="subscription-keywords">关键词</label><input id="subscription-keywords" value={keywords} onChange={(event) => setKeywords(event.target.value)} placeholder="例如：Agent, RAG, Tool Use" /></div>
             <div className="form-field"><label htmlFor="subscription-prompt">Hermes任务说明</label><textarea id="subscription-prompt" rows={6} value={form.prompt} onChange={(event) => setForm({ ...form, prompt: event.target.value })} placeholder="例如：检索过去7天的重要论文，说明核心方法、实验结果和推荐理由" required maxLength={10000} /><div className="prompt-options" aria-label="快速补充要求">{promptOptions.map((option) => <button type="button" key={option} className={form.prompt.includes(option) ? "selected" : ""} onClick={() => addPromptOption(option)}>{form.prompt.includes(option) ? <Check size={14} /> : <Plus size={14} />}{option}</button>)}</div></div>
+            <label className="form-check"><input type="checkbox" checked={Boolean(form.notifyWechat)} onChange={(event) => setForm({ ...form, notifyWechat: event.target.checked })} /><span>任务完成后通过微信发送简报</span></label>
             <div className="subscription-readiness" aria-label="订阅配置完成度"><div><span>配置完成度</span><strong>{completedFields}/4</strong></div><div className="readiness-track"><span style={{ width: `${completedFields * 25}%` }} /></div><small>{completedFields === 4 ? "信息完整，可以保存并开始监测" : "补齐名称、周期、关键词和任务说明，结果会更准确"}</small></div>
             {save.isError && <p className="form-error" role="alert">{save.error.message}。请检查填写内容后重试。</p>}
             <div className="dialog-actions">{editing && <button type="button" className="danger-button" onClick={() => setConfirmingDelete(true)} disabled={draft.isPending}>删除订阅</button>}<button className="primary-button" type="submit" disabled={save.isPending || draft.isPending}>{draft.isPending ? "等待Hermes生成" : save.isPending ? "正在保存" : "保存订阅"}</button></div>

@@ -86,6 +86,32 @@ async def test_execute_rejects_malformed_output() -> None:
 
 
 @pytest.mark.asyncio
+async def test_execute_stops_remote_run_before_timeout() -> None:
+    hermes = import_module("app.services.hermes")
+    paths: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        paths.append(f"{request.method} {request.url.path}")
+        if request.method == "POST" and request.url.path == "/v1/runs":
+            return httpx.Response(202, json={"run_id": "run_timeout", "status": "started"})
+        if request.method == "GET":
+            return httpx.Response(200, json={"run_id": "run_timeout", "status": "running"})
+        assert request.method == "POST"
+        assert request.url.path == "/v1/runs/run_timeout/stop"
+        return httpx.Response(200, json={"status": "stopping"})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+        client = hermes.HermesClient(
+            base_url="http://hermes.local", api_key="test-key", timeout_seconds=0,
+            poll_interval=0, http_client=http_client,
+        )
+        with pytest.raises(hermes.HermesTimeout, match="超过0秒"):
+            await client.execute("timeout")
+
+    assert paths[-1] == "POST /v1/runs/run_timeout/stop"
+
+
+@pytest.mark.asyncio
 async def test_draft_subscription_parses_editable_configuration() -> None:
     hermes = import_module("app.services.hermes")
 

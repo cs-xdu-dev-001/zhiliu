@@ -248,6 +248,7 @@ class MonitorPayload(McpModel):
     keywords: list[str] = Field(default_factory=list, max_length=30)
     schedule: str = Field(min_length=1, max_length=80)
     prompt: str = Field(min_length=1, max_length=10000)
+    notify_wechat: bool | None = None
 
     @field_validator("schedule")
     @classmethod

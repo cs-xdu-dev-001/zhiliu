@@ -339,11 +339,14 @@ class DataExportService:
             return
         statement = select(Subscription).where(or_(*conditions)).order_by(Subscription.id)
         for subscription in self.db.scalars(statement.execution_options(yield_per=100)):
-            yield {
+            reference = {
                 "id": subscription.id,
                 "name": clean_text(subscription.name, limit=120),
                 "kind": subscription.kind,
             }
+            if subscription.notify_wechat:
+                reference["notifyWechat"] = True
+            yield reference
 
     def _preferences(self) -> Iterator[dict]:
         conditions = self._date_filters(HermesPreference.created_at)
@@ -398,6 +401,9 @@ class DataExportService:
                 "retryCount": task.retry_count,
                 "reportSeriesId": task.report_series_id,
                 "reportVersionNumber": task.report_version_number,
+                "notificationStatus": task.notification_status,
+                "notificationError": clean_text(task.notification_error, limit=500),
+                "notificationSentAt": iso(task.notification_sent_at),
             }
 
     def _publications(self) -> Iterator[dict]:

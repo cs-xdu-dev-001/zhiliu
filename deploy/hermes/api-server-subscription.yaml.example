@@ -1,0 +1,7 @@
+# Merge into Hermes ~/.hermes/config.yaml for知流的订阅API客户端。
+# api_server runs then retain web search but never receive知流MCP tools.
+# Existing interactive微信/CLI profiles are unaffected.
+platform_toolsets:
+  api_server:
+    - web
+    - no_mcp

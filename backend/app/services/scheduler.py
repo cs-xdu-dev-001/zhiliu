@@ -156,7 +156,7 @@ async def process_queued_tasks() -> None:
                 if task.origin == "web-report":
                     await ReportService(db, client).execute_task(task.id)
                 else:
-                    await RunService(db, client).execute_task(task.id)
+                    await RunService(db, client, settings=settings).execute_task(task.id)
     except Exception:
         _last_queue_poll_failed = True
         raise

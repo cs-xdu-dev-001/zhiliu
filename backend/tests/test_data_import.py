@@ -173,6 +173,22 @@ def test_preview_confirm_idempotency_and_safe_undo(client: TestClient, db_sessio
         assert db_session.scalar(select(func.count()).select_from(model)) == 0
 
 
+def test_legacy_import_preserves_existing_wechat_setting(client: TestClient, db_session: Session) -> None:
+    existing = Subscription(
+        name="迁移订阅", kind="news", keywords_json="[]", schedule="0 8 * * *",
+        prompt="保留现有配置", enabled=True, notify_wechat=True,
+    )
+    db_session.add(existing)
+    db_session.commit()
+
+    raw, result = preview(client, import_payload())
+    response = confirm(client, raw, result["previewToken"])
+
+    assert response.status_code == 200, response.text
+    db_session.refresh(existing)
+    assert existing.notify_wechat is True
+
+
 def test_undo_refuses_content_changed_after_import(client: TestClient, db_session: Session) -> None:
     raw, result = preview(client, import_payload())
     batch_id = confirm(client, raw, result["previewToken"]).json()["batch"]["id"]

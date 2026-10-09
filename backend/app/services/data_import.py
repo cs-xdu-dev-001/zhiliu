@@ -61,7 +61,7 @@ SKIPPED_DATASETS = {"sources", "tasks", "publications"}
 
 FIELD_RULES: dict[str, tuple[set[str], set[str]]] = {
     "subscriptionRefs": (
-        {"id", "name", "kind"},
+        {"id", "name", "kind", "notifyWechat"},
         {"id", "name", "kind"},
     ),
     "items": (
@@ -116,6 +116,7 @@ FIELD_RULES: dict[str, tuple[set[str], set[str]]] = {
             "id", "subscriptionId", "retryOfId", "traceId", "origin", "topic", "status", "stage",
             "resultSummary", "startedAt", "finishedAt", "cancelledAt", "durationMs", "retryCount",
             "reportSeriesId", "reportVersionNumber",
+            "notificationStatus", "notificationError", "notificationSentAt",
         },
         {"id"},
     ),
@@ -503,9 +504,13 @@ class ContentImportService:
             "canImport": creates > 0 or conflicts == 0,
         }
 
-    def _subscription_sources(self, data: dict[str, Any]) -> dict[int, tuple[str, str]]:
+    def _subscription_sources(self, data: dict[str, Any]) -> dict[int, tuple[str, str, bool | None]]:
         result = {
-            record["id"]: (_clean(record["name"], 120), record["kind"])
+            record["id"]: (
+                _clean(record["name"], 120),
+                record["kind"],
+                bool(record["notifyWechat"]) if "notifyWechat" in record else None,
+            )
             for record in data.get("subscriptionRefs", [])
         }
         kinds_by_id: dict[int, str] = {}
@@ -514,12 +519,12 @@ class ContentImportService:
                 kinds_by_id.setdefault(record["subscriptionId"], record["kind"])
         kind_labels = {"news": "热点", "paper": "论文", "job": "招聘"}
         for source_id, kind in kinds_by_id.items():
-            result.setdefault(source_id, (f"迁移导入·{kind_labels.get(kind, kind)}", kind))
+            result.setdefault(source_id, (f"迁移导入·{kind_labels.get(kind, kind)}", kind, None))
         return result
 
     def _preview_subscriptions(self, data: dict[str, Any], summary: dict[str, dict[str, int]]) -> dict[int, int]:
         result: dict[int, int] = {}
-        for source_id, (name, kind) in self._subscription_sources(data).items():
+        for source_id, (name, kind, _) in self._subscription_sources(data).items():
             existing = self.db.scalar(select(Subscription).where(Subscription.name == name, Subscription.kind == kind))
             if existing:
                 result[source_id] = existing.id
@@ -673,9 +678,11 @@ class ContentImportService:
 
     def _commit_subscriptions(self, data: dict[str, Any], summary: dict[str, dict[str, int]], created: list) -> dict[int, Subscription]:
         result: dict[int, Subscription] = {}
-        for source_id, (name, kind) in self._subscription_sources(data).items():
+        for source_id, (name, kind, notify_wechat) in self._subscription_sources(data).items():
             existing = self.db.scalar(select(Subscription).where(Subscription.name == name, Subscription.kind == kind))
             if existing:
+                if notify_wechat is not None:
+                    existing.notify_wechat = notify_wechat
                 result[source_id] = existing
                 summary["subscriptions"]["reuse"] += 1
                 continue
@@ -686,6 +693,7 @@ class ContentImportService:
                 schedule="0 0 1 1 *",
                 prompt="由内容迁移创建，仅用于承载导入记录，不自动执行。",
                 enabled=False,
+                notify_wechat=bool(notify_wechat),
             )
             self.db.add(record)
             self.db.flush()

@@ -42,6 +42,13 @@ export function TaskDetail() {
       queryClient.invalidateQueries({ queryKey: ["runs"] });
     },
   });
+  const notify = useMutation({
+    mutationFn: () => api.post<TaskRun>(`/api/runs/${id}/notify`),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(["task-run", id], updated);
+      queryClient.invalidateQueries({ queryKey: ["runs"] });
+    },
+  });
 
   if (query.isPending) return <div className="detail-skeleton" role="status" aria-label="正在加载任务详情" />;
   if (query.error instanceof ApiError && query.error.status === 404) {
@@ -55,6 +62,7 @@ export function TaskDetail() {
   const StageIcon = stageIcon[run.stage] || Clock3;
   const from = encodeURIComponent(`/tasks/${run.id}`);
   const requestLabel = run.origin === "weixin-hermes" ? "微信请求" : run.origin === "web-report" ? "报告要求" : "订阅任务";
+  const notificationLabel: Record<string, string> = { pending: "等待发送", sent: "已发送到微信", session_not_ready: "微信会话未就绪", not_configured: "未配置微信推送", failed: "微信发送失败", unknown: "发送结果未确认", cancelled: "订阅已关闭微信推送" };
 
   return (
     <article className="task-detail detail-page">
@@ -82,6 +90,7 @@ export function TaskDetail() {
           {run.finishedAt && <div><dt>完成时间</dt><dd>{new Date(run.finishedAt).toLocaleString("zh-CN")}</dd></div>}
           {run.heartbeatAt && run.status === "running" && <div><dt>最近进度</dt><dd>{new Date(run.heartbeatAt).toLocaleString("zh-CN")}</dd></div>}
           {run.durationMs !== null && <div><dt>处理耗时</dt><dd>{(run.durationMs / 1000).toFixed(1)}秒</dd></div>}
+          {run.notificationStatus && run.notificationStatus !== "not_requested" && <div><dt>微信推送</dt><dd>{notificationLabel[run.notificationStatus] ?? run.notificationStatus}{run.notificationError ? `：${run.notificationError}` : ""}</dd></div>}
           {run.retryOfId && <div><dt>重试来源</dt><dd><Link href={`/tasks/${run.retryOfId}`}>任务#{run.retryOfId}</Link></dd></div>}
         </dl>
         {(run.hermesRunId || run.traceId) && <details className="task-technical-details"><summary>技术信息</summary><dl>{run.hermesRunId && <div><dt>Hermes任务ID</dt><dd>{run.hermesRunId}</dd></div>}{run.traceId && <div><dt>追踪号</dt><dd>{run.traceId}</dd></div>}</dl></details>}
@@ -92,6 +101,7 @@ export function TaskDetail() {
         {run.publicationId || run.briefingId ? <div className="detail-actions">
             {run.publicationId && <Link href={`/traces/${run.publicationId}?from=${encodeURIComponent(`/tasks/${run.id}`)}`}>查看完整处理链路</Link>}
             {run.briefingId && <Link href={`/reports/${run.briefingId}?from=${from}`}>查看生成报告</Link>}
+            {run.notificationStatus && ["failed", "session_not_ready", "unknown", "not_configured", "cancelled"].includes(run.notificationStatus) && <button type="button" className="secondary-compact" disabled={notify.isPending} onClick={() => notify.mutate()}>{notify.isPending ? "正在重试微信" : "重试微信推送"}</button>}
           </div>
           : run.status === "failed" ? <div className="task-recovery">
               <p>{run.origin === "weixin-hermes"

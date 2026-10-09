@@ -56,6 +56,19 @@ def test_disabled_duplicate_monitor_is_reenabled(db_session: Session) -> None:
     assert json.loads(record.keywords_json) == ["Agent", "MCP"]
 
 
+def test_duplicate_monitor_without_wechat_option_preserves_existing_setting(db_session: Session) -> None:
+    service = MonitorService(db_session)
+    first = service.create(monitor_payload())
+    record = db_session.get(Subscription, first.subscription_id)
+    record.notify_wechat = True
+    db_session.commit()
+
+    service.create(monitor_payload())
+
+    db_session.refresh(record)
+    assert record.notify_wechat is True
+
+
 def test_monitor_failure_rolls_back_and_hides_database_details(
     db_session: Session,
     monkeypatch: pytest.MonkeyPatch,
