@@ -39,6 +39,21 @@ cd /opt/zhiliu
 
 输出的`.db`和同名`.sha256`必须一起保存，并纳入服务器现有restic/rclone任务。建议每日备份、保留至少30个日备份和12个周备份；每月至少在隔离环境完成一次恢复演练。
 
+## 订阅微信推送
+
+订阅推送由宿主机Hermes CLI负责发送，知流只保存待发送消息和投递状态，不直接实现iLink协议。先将`deploy/hermes/api-server-subscription.yaml.example`中的`platform_toolsets.api_server`合并到Hermes配置，保留`web`并加入`no_mcp`，避免定时订阅再次调用`zhiliu_*`工具；合并前备份原配置并按现有方式重启Hermes网关。
+
+安装宿主机投递服务并启动：
+
+```bash
+cd /opt/zhiliu
+sudo install -m 0644 deploy/hermes/zhiliu-weixin.service /etc/systemd/system/zhiliu-weixin.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now zhiliu-weixin.service
+```
+
+`.env`中确认`WEIXIN_PUSH_ENABLED=true`后重建backend/web。每个订阅还要在页面勾选微信推送；首次发送前，必须先由微信用户给机器人发消息或重新配对。会话未就绪时任务仍保留为可重试状态，不会误报成功，可在任务详情点击“重试微信推送”。排障使用`sudo systemctl status zhiliu-weixin.service`和`sudo journalctl -u zhiliu-weixin.service -n 100`，日志中不得记录密钥或完整消息。
+
 ## 内容迁移
 
 跨环境迁移内容时，在源站“设置→数据迁移”下载JSON，在目标站上传同一文件并先查看差异预览。确认导入使用短时、文件绑定的预览凭证；文件变化或凭证过期都必须重新预览。导入只写入内容及公开来源关系，不恢复密钥、内部地址、微信原文、任务历史或Hermes原始发布记录。
